@@ -18,30 +18,26 @@ const (
 	poolIDTagName       = "garm-pool-id"
 )
 
-func NewAzureProvider(execEnv execution.Environment) (execution.ExternalProvider, error) {
-	if err := execEnv.Validate(); err != nil {
-		return nil, fmt.Errorf("error validating execution environment: %w", err)
-	}
-
-	conf, err := config.NewConfig(execEnv.ProviderConfigFile)
+func NewAzureProvider(configPath, controllerID string) (execution.ExternalProvider, error) {
+	conf, err := config.NewConfig(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("error loading config: %w", err)
 	}
-	creds, err := conf.DefaultCredentials()
+	creds, err := conf.GetCredentials()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get credentials: %w", err)
 	}
 	return &azureProvider{
 		cfg:          conf,
-		defaultCreds: creds,
-		execEnv:      execEnv,
+		creds:        creds,
+		controllerID: controllerID,
 	}, nil
 }
 
 type azureProvider struct {
 	cfg          *config.Config
-	defaultCreds azcore.TokenCredential
-	execEnv      execution.Environment
+	creds        azcore.TokenCredential
+	controllerID string
 }
 
 // CreateInstance creates a new compute instance in the provider.

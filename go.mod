@@ -28,4 +28,4 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
 
-replace github.com/cloudbase/garm => github.com/gabriel-samfira/garm v0.0.0-20230314182026-e29d5db72c22
+replace github.com/cloudbase/garm => github.com/gabriel-samfira/garm v0.0.0-20230314233542-b17c921a7c5d

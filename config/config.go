@@ -23,41 +23,15 @@ func NewConfig(cfgFile string) (*Config, error) {
 }
 
 type Config struct {
-	DefaultCredentialName string        `toml:"default_credentials"`
-	Credentials           []Credentials `toml:"credentials"`
+	Credentials Credentials `toml:"credentials"`
 }
 
-func (c *Config) GetCredentialsByName(name string) (azcore.TokenCredential, error) {
-	found := false
-	var creds Credentials
-	for _, credential := range c.Credentials {
-		if credential.Name == name {
-			creds = credential
-			break
-		}
-	}
-	if !found {
-		return nil, fmt.Errorf("failed to find credentials with name %s", name)
-	}
-	token, err := creds.Auth()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get auth token for credentials %s: %w", name, err)
-	}
-	return token, nil
-}
-
-func (c *Config) DefaultCredentials() (azcore.TokenCredential, error) {
+func (c *Config) GetCredentials() (azcore.TokenCredential, error) {
 	if err := c.Validate(); err != nil {
 		return nil, fmt.Errorf("error validating config: %w", err)
 	}
 
-	var err error
-	var creds azcore.TokenCredential
-	if c.DefaultCredentialName != "" {
-		creds, err = c.GetCredentialsByName(c.DefaultCredentialName)
-	} else {
-		creds, err = c.Credentials[0].Auth()
-	}
+	creds, err := c.Credentials.Auth()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get authentication token: %w", err)
 	}
@@ -66,30 +40,8 @@ func (c *Config) DefaultCredentials() (azcore.TokenCredential, error) {
 }
 
 func (c *Config) Validate() error {
-	if len(c.Credentials) == 0 {
-		return fmt.Errorf("no credentials were defined")
-	}
-
-	if len(c.Credentials) > 1 && c.DefaultCredentialName == "" {
-		return fmt.Errorf("multiple credentials were defined and no default credentials were specified")
-	}
-
-	credsNames := map[string]int{}
-
-	for _, cred := range c.Credentials {
-		credsNames[cred.Name] += 1
-	}
-
-	for name, count := range credsNames {
-		if count > 1 {
-			return fmt.Errorf("duplicate credentials: %s", name)
-		}
-	}
-
-	for _, creds := range c.Credentials {
-		if err := creds.Validate(); err != nil {
-			return fmt.Errorf("error validating credentials: %w", err)
-		}
+	if _, err := c.GetCredentials(); err != nil {
+		return fmt.Errorf("failed to validate credentials: %w", err)
 	}
 
 	return nil
