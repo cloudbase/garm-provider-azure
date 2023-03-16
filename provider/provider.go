@@ -42,6 +42,20 @@ type azureProvider struct {
 
 // CreateInstance creates a new compute instance in the provider.
 func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams params.BootstrapInstance) (params.Instance, error) {
+	if bootstrapParams.OSArch != params.Amd64 {
+		// x86_64 only for now. Azure does seem to support arm64, which we will look at at a later time.
+		return params.Instance{}, fmt.Errorf("invalid architecture %s (supported: %s)", bootstrapParams.OSArch, params.Amd64)
+	}
+
+	// resourceTags, err := tagsFromBootstrapParams(bootstrapParams)
+	// if err != nil {
+	// 	return params.Instance{}, fmt.Errorf("failed to get tags: %w", err)
+	// }
+
+	// imgDetails, err := urnToImageDetails(bootstrapParams.Image)
+	// if err != nil {
+	// 	return params.Instance{}, fmt.Errorf("failed to get image details: %w", err)
+	// }
 	return params.Instance{}, nil
 }
 

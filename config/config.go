@@ -24,6 +24,7 @@ func NewConfig(cfgFile string) (*Config, error) {
 
 type Config struct {
 	Credentials Credentials `toml:"credentials"`
+	Location    string      `toml:"location"`
 }
 
 func (c *Config) GetCredentials() (azcore.TokenCredential, error) {
@@ -51,11 +52,12 @@ type Credentials struct {
 	Name        string `toml:"name"`
 	Description string `toml:"description"`
 
-	TenantID     string            `toml:"tenant_id"`
-	ClientID     string            `toml:"client_id"`
-	UserPassword UserPassword      `toml:"password_auth"`
-	CertAuth     ClientCertificate `toml:"cert_auth"`
-	SecretAuth   ClientSecret      `toml:"secret_auth"`
+	TenantID       string            `toml:"tenant_id"`
+	ClientID       string            `toml:"client_id"`
+	SubscriptionID string            `toml:"subscription_id"`
+	UserPassword   UserPassword      `toml:"password_auth"`
+	CertAuth       ClientCertificate `toml:"cert_auth"`
+	SecretAuth     ClientSecret      `toml:"secret_auth"`
 	// ClientOptions is the azure identity client options that will be used to authenticate
 	// againsts an azure cloud. This is a heavy handed approach for now, defining the entire
 	// ClientOptions here, but should allow users to use this provider with AzureStack or any
@@ -64,8 +66,16 @@ type Credentials struct {
 }
 
 func (c Credentials) Validate() error {
-	if c.TenantID == "" || c.ClientID == "" {
-		return fmt.Errorf("missing tenant_id or client_id")
+	if c.TenantID == "" {
+		return fmt.Errorf("missing tenant_id")
+	}
+
+	if c.ClientID == "" {
+		return fmt.Errorf("missing client_id")
+	}
+
+	if c.SubscriptionID == "" {
+		return fmt.Errorf("missing subscription_id")
 	}
 
 	if c.UserPassword.HasCredentials() {
