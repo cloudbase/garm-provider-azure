@@ -66,7 +66,7 @@ github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
 ## explicit; go 1.16
 github.com/BurntSushi/toml
 github.com/BurntSushi/toml/internal
-# github.com/cloudbase/garm v0.0.0-20230314122126-e67c08b1d4c8 => github.com/gabriel-samfira/garm v0.0.0-20230316121457-c6f29c8a47d6
+# github.com/cloudbase/garm v0.0.0-20230314122126-e67c08b1d4c8 => github.com/gabriel-samfira/garm v0.0.0-20230317111753-5a167186e21f
 ## explicit; go 1.18
 github.com/cloudbase/garm/cloudconfig
 github.com/cloudbase/garm/config
@@ -210,4 +210,4 @@ gopkg.in/natefinch/lumberjack.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# github.com/cloudbase/garm => github.com/gabriel-samfira/garm v0.0.0-20230316121457-c6f29c8a47d6
+# github.com/cloudbase/garm => github.com/gabriel-samfira/garm v0.0.0-20230317111753-5a167186e21f

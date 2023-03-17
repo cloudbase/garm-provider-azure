@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -8,20 +9,17 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/cloudbase/garm-provider-azure/userdata"
 	"github.com/cloudbase/garm/params"
 	"github.com/cloudbase/garm/util"
 	"github.com/google/go-github/v48/github"
 )
 
-type OSPlatformType string
-
 const (
 	defaultAdminName          = "garm"
 	defaultStorageAccountType = armcompute.StorageAccountTypesStandardLRS
 
-	OSWindows         OSPlatformType = "windows"
-	OSLinux           OSPlatformType = "linux"
-	defaultDiskSizeGB int32          = 127
+	defaultDiskSizeGB int32 = 127
 )
 
 func newExtraSpecsFromBootstrapData(data params.BootstrapInstance) extraSpecs {
@@ -42,7 +40,6 @@ type extraSpecs struct {
 	AdminUsername      string                                    `json:"admin_username"`
 	StorageAccountType armcompute.StorageAccountTypes            `json:"storage_account_type"`
 	DiskSizeGB         int32                                     `json:"disk_size_gb"`
-	UseCloudInit       bool                                      `json:"use_cloud_init"`
 }
 
 func (e *extraSpecs) cleanInboundPorts() {
@@ -133,7 +130,6 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance) (runnerSpec
 		AdminUsername:      extraSpecs.AdminUsername,
 		StorageAccountType: extraSpecs.StorageAccountType,
 		DiskSizeGB:         extraSpecs.DiskSizeGB,
-		UseCloudInit:       extraSpecs.UseCloudInit,
 		BootstrapParams:    data,
 		Tools:              tools,
 	}, nil
@@ -143,7 +139,6 @@ type runnerSpec struct {
 	VMSize             string
 	AllocatePublicIP   bool
 	AdminUsername      string
-	OSPlatform         string
 	StorageAccountType armcompute.StorageAccountTypes
 	DiskSizeGB         int32
 	OpenInboundPorts   map[armnetwork.SecurityRuleProtocol][]int
@@ -163,33 +158,26 @@ func (r runnerSpec) ImageDetails() (imageDetails, error) {
 	return imgDetails, nil
 }
 
-func (r runnerSpec) composeCloudInitUserdata() (string, error) {
+func (r runnerSpec) composeCloudInitUserdata() ([]byte, error) {
 	udata, err := util.GetCloudConfig(r.BootstrapParams, r.Tools, r.BootstrapParams.Name)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate userdata: %w", err)
+		return nil, fmt.Errorf("failed to generate userdata: %w", err)
 	}
-	return udata, nil
+	return []byte(udata), nil
 }
 
-func (r runnerSpec) composeWindowsUserdata() (string, error) {
-	return "", nil
+func (r runnerSpec) composeWindowsUserdata() ([]byte, error) {
+	return nil, nil
 }
 
-func (r runnerSpec) composeLinuxUserdata() (string, error) {
-	return "", nil
-}
-
-func (r runnerSpec) ComposeUserData() (string, error) {
+func (r runnerSpec) ComposeUserData() ([]byte, error) {
 	switch r.BootstrapParams.OSType {
 	case params.Linux:
-		if r.UseCloudInit {
-			return r.composeCloudInitUserdata()
-		}
-		return r.composeLinuxUserdata()
+		return r.composeCloudInitUserdata()
 	case params.Windows:
 		return r.composeWindowsUserdata()
 	}
-	return "", fmt.Errorf("unsupported OS type for cloud config: %s", r.BootstrapParams.OSType)
+	return nil, fmt.Errorf("unsupported OS type for cloud config: %s", r.BootstrapParams.OSType)
 }
 
 func (r runnerSpec) SecurityRules() []*armnetwork.SecurityRule {
@@ -217,4 +205,105 @@ func (r runnerSpec) SecurityRules() []*armnetwork.SecurityRule {
 		}
 	}
 	return ret
+}
+
+func (r runnerSpec) GetVMExtension(location string) (*armcompute.VirtualMachineExtension, error) {
+	switch r.BootstrapParams.OSType {
+	case params.Windows:
+		scriptCmd, err := userdata.GetWindowsRunScriptCommand(r.BootstrapParams.InstanceToken)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get run script: %w", err)
+		}
+
+		asBytes, err := util.UTF16EncodedByteArrayFromString(string(scriptCmd))
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode script cmd: %w", err)
+		}
+
+		asBase64 := base64.StdEncoding.EncodeToString(asBytes)
+		ext := &armcompute.VirtualMachineExtension{
+			Location: to.Ptr(location),
+			Tags: map[string]*string{
+				"displayName": to.Ptr("config-app"),
+			},
+			Type: to.Ptr("Microsoft.Compute/virtualMachines/extensions"),
+			Name: to.Ptr("virtualMachineName/config-app"),
+			Properties: &armcompute.VirtualMachineExtensionProperties{
+				Publisher:          to.Ptr("Microsoft.Compute"),
+				Type:               to.Ptr("CustomScriptExtension"),
+				TypeHandlerVersion: to.Ptr("1.10"),
+				ProtectedSettings: &map[string]interface{}{
+					"commandToExecute": fmt.Sprintf("powershell.exe -NonInteractive -EncodedCommand %s", asBase64),
+				},
+			},
+		}
+		return ext, nil
+	}
+	return nil, nil
+}
+
+func (r runnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.VirtualMachineProperties, error) {
+	imgDetails, err := r.ImageDetails()
+	if err != nil {
+		return nil, fmt.Errorf("failed to getimage details: %w", err)
+	}
+	password, err := util.GetRandomString(24)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get random string: %w", err)
+	}
+
+	customData, err := r.ComposeUserData()
+	if err != nil {
+		return nil, fmt.Errorf("failed to compose userdata: %w", err)
+	}
+
+	compressedUserData, err := util.CompressData(customData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compress data: %w", err)
+	}
+	asBase64 := base64.StdEncoding.EncodeToString(compressedUserData)
+
+	properties := &armcompute.VirtualMachineProperties{
+		StorageProfile: &armcompute.StorageProfile{
+			ImageReference: &armcompute.ImageReference{
+				Offer:     to.Ptr(imgDetails.Offer),
+				Publisher: to.Ptr(imgDetails.Publisher),
+				SKU:       to.Ptr(imgDetails.SKU),
+				Version:   to.Ptr(imgDetails.Version),
+			},
+			OSDisk: &armcompute.OSDisk{
+				Name:         to.Ptr(r.BootstrapParams.Name),
+				CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
+				Caching:      to.Ptr(armcompute.CachingTypesReadWrite),
+				ManagedDisk: &armcompute.ManagedDiskParameters{
+					StorageAccountType: &r.StorageAccountType,
+				},
+				DiskSizeGB: &r.DiskSizeGB,
+			},
+		},
+		HardwareProfile: &armcompute.HardwareProfile{
+			VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(r.VMSize)),
+		},
+		OSProfile: &armcompute.OSProfile{
+			CustomData: &asBase64,
+			// garm names may be longer than 15 characters, but that should be fine.
+			ComputerName:  to.Ptr(r.BootstrapParams.Name),
+			AdminUsername: to.Ptr(r.AdminUsername),
+			AdminPassword: &password,
+		},
+		NetworkProfile: &armcompute.NetworkProfile{
+			NetworkInterfaces: []*armcompute.NetworkInterfaceReference{
+				{
+					ID: to.Ptr(networkInterfaceID),
+				},
+			},
+		},
+	}
+
+	if r.BootstrapParams.OSType == params.Linux {
+		properties.OSProfile.LinuxConfiguration = &armcompute.LinuxConfiguration{
+			DisablePasswordAuthentication: to.Ptr(true),
+		}
+	}
+	return properties, nil
 }

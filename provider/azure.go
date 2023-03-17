@@ -14,7 +14,7 @@ import (
 	"github.com/cloudbase/garm-provider-azure/config"
 )
 
-func newAzCLI(cfg *config.Config, location string) (*azureCli, error) {
+func newAzCLI(cfg *config.Config) (*azureCli, error) {
 	creds, err := cfg.GetCredentials()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
@@ -72,6 +72,7 @@ func newAzCLI(cfg *config.Config, location string) (*azureCli, error) {
 		vmCli:     vmClient,
 		pubIPCli:  publicIPcli,
 		extCli:    extClient,
+		location:  cfg.Location,
 	}
 	return azCli, nil
 }
@@ -89,8 +90,7 @@ type azureCli struct {
 	pubIPCli  *armnetwork.PublicIPAddressesClient
 	extCli    *armcompute.VirtualMachineExtensionsClient
 
-	location       string
-	subscriptionID string
+	location string
 }
 
 func (a *azureCli) createResourceGroup(ctx context.Context, name string, tags map[string]*string) (*armresources.ResourceGroup, error) {
@@ -152,15 +152,12 @@ func (a *azureCli) createSubnet(ctx context.Context, baseName, subnetCIDR string
 	return &resp.Subnet, nil
 }
 
-func (a *azureCli) createNetworkSecurityGroup(ctx context.Context, baseName string) (*armnetwork.SecurityGroup, error) {
+func (a *azureCli) createNetworkSecurityGroup(ctx context.Context, baseName string, spec runnerSpec) (*armnetwork.SecurityGroup, error) {
+	rules := spec.SecurityRules()
 	parameters := armnetwork.SecurityGroup{
 		Location: to.Ptr(a.location),
 		Properties: &armnetwork.SecurityGroupPropertiesFormat{
-			// TODO(gabriel-samfira): extra_specs
-			// example: {
-			//		openInboundPorts: [80, 443]
-			// }
-			SecurityRules: []*armnetwork.SecurityRule{},
+			SecurityRules: rules,
 		},
 	}
 
@@ -238,67 +235,35 @@ func (a *azureCli) createPublicIP(ctx context.Context, baseName string) (*armnet
 	return &resp.PublicIPAddress, err
 }
 
-func (a *azureCli) createVirtualMachine(ctx context.Context, imgDetails imageDetails, vmSize, baseName, networkInterfaceID string) (*armcompute.VirtualMachine, error) {
+func (a *azureCli) createVirtualMachine(ctx context.Context, spec runnerSpec, networkInterfaceID string, tags map[string]*string) (*armcompute.VirtualMachine, error) {
+	properties, err := spec.GetNewVMProperties(networkInterfaceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get new VM properties: %w", err)
+	}
 	parameters := armcompute.VirtualMachine{
 		Location: to.Ptr(a.location),
+		Tags:     tags,
 		Identity: &armcompute.VirtualMachineIdentity{
 			Type: to.Ptr(armcompute.ResourceIdentityTypeNone),
 		},
-		Properties: &armcompute.VirtualMachineProperties{
-			StorageProfile: &armcompute.StorageProfile{
-				ImageReference: &armcompute.ImageReference{
-					Offer:     to.Ptr(imgDetails.Offer),
-					Publisher: to.Ptr(imgDetails.Publisher),
-					SKU:       to.Ptr(imgDetails.SKU),
-					Version:   to.Ptr(imgDetails.Version),
-				},
-				OSDisk: &armcompute.OSDisk{
-					Name:         to.Ptr(baseName),
-					CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
-					Caching:      to.Ptr(armcompute.CachingTypesReadWrite),
-					ManagedDisk: &armcompute.ManagedDiskParameters{
-						// TODO(gabriel-samfira): extra_specs
-						StorageAccountType: to.Ptr(armcompute.StorageAccountTypesStandardLRS),
-					},
-					// TODO(gabriel-samfira): extra_specs
-					//DiskSizeGB: to.Ptr[int32](100), // default 127G
-				},
-			},
-			HardwareProfile: &armcompute.HardwareProfile{
-				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(vmSize)),
-			},
-			OSProfile: &armcompute.OSProfile{
-				// garm names may be longer than 15 characters, but that should be fine.
-				ComputerName: to.Ptr(baseName),
-				// TODO(gabriel-samfira): extra_specs
-				AdminUsername: to.Ptr("sample-user"),
-				AdminPassword: to.Ptr("Password01!@#"),
-				//require ssh key for authentication on linux
-				//LinuxConfiguration: &armcompute.LinuxConfiguration{
-				//	DisablePasswordAuthentication: to.Ptr(true),
-				//	SSH: &armcompute.SSHConfiguration{
-				//		PublicKeys: []*armcompute.SSHPublicKey{
-				//			{
-				//				Path:    to.Ptr(fmt.Sprintf("/home/%s/.ssh/authorized_keys", "sample-user")),
-				//				KeyData: to.Ptr(string(sshBytes)),
-				//			},
-				//		},
-				//	},
-				//},
-			},
-			NetworkProfile: &armcompute.NetworkProfile{
-				NetworkInterfaces: []*armcompute.NetworkInterfaceReference{
-					{
-						ID: to.Ptr(networkInterfaceID),
-					},
-				},
-			},
-		},
+		Properties: properties,
 	}
 
-	pollerResponse, err := a.vmCli.BeginCreateOrUpdate(ctx, baseName, baseName, parameters, nil)
+	pollerResponse, err := a.vmCli.BeginCreateOrUpdate(ctx, spec.BootstrapParams.Name, spec.BootstrapParams.Name, parameters, nil)
 	if err != nil {
 		return nil, err
+	}
+
+	computeExtension, err := spec.GetVMExtension(a.location)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vm extension: %w", err)
+	}
+
+	if computeExtension != nil {
+		_, err = a.extCli.BeginCreateOrUpdate(ctx, spec.BootstrapParams.Name, spec.BootstrapParams.Name, "CustomScriptExtension", *computeExtension, nil)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	resp, err := pollerResponse.PollUntilDone(ctx, nil)
@@ -307,4 +272,71 @@ func (a *azureCli) createVirtualMachine(ctx context.Context, imgDetails imageDet
 	}
 
 	return &resp.VirtualMachine, nil
+}
+
+func (a *azureCli) deleteResourceGroup(ctx context.Context, resourceGroup string) error {
+	opts := &armresources.ResourceGroupsClientBeginDeleteOptions{
+		ForceDeletionTypes: to.Ptr("forceDeletionTypes=Microsoft.Compute/virtualMachines,Microsoft.Compute/virtualMachineScaleSets"),
+	}
+	pollerResponse, err := a.rgCli.BeginDelete(ctx, resourceGroup, opts)
+	if err != nil {
+		return fmt.Errorf("failed to delete resource group: %w", err)
+	}
+
+	_, err = pollerResponse.PollUntilDone(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete resource group: %w", err)
+	}
+
+	return nil
+}
+
+func (a *azureCli) getInstance(ctx context.Context, rgName, vmName string) (armcompute.VirtualMachine, error) {
+	opts := &armcompute.VirtualMachinesClientGetOptions{
+		Expand: to.Ptr(armcompute.InstanceViewTypesInstanceView),
+	}
+	vm, err := a.vmCli.Get(ctx, rgName, rgName, opts)
+	if err != nil {
+		return armcompute.VirtualMachine{}, fmt.Errorf("failed to get VM: %w", err)
+	}
+	return vm.VirtualMachine, nil
+}
+
+func (a *azureCli) listResourceGroups(ctx context.Context, poolID string) ([]*armresources.ResourceGroup, error) {
+	// $filter=tagName eq 'tag1' and tagValue eq 'Value1'
+	filter := fmt.Sprintf("$filter=tagName eq '%s' and tagValue eq '%s'", poolIDTagName, poolID)
+	opts := &armresources.ResourceGroupsClientListOptions{
+		Filter: to.Ptr(filter),
+	}
+	pager := a.rgCli.NewListPager(opts)
+	var resourceGroups []*armresources.ResourceGroup
+	for pager.More() {
+		nextResult, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list resource groups: %w", err)
+		}
+		if nextResult.ResourceGroupListResult.Value != nil {
+			resourceGroups = append(resourceGroups, nextResult.ResourceGroupListResult.Value...)
+		}
+	}
+	return resourceGroups, nil
+}
+
+func (a *azureCli) listVirtualMachines(ctx context.Context, poolID string) ([]*armcompute.VirtualMachine, error) {
+	filter := fmt.Sprintf("[?tags.%s == '%s']", poolIDTagName, poolID)
+	options := &armcompute.VirtualMachinesClientListAllOptions{
+		Filter: to.Ptr(filter),
+	}
+	var resp []*armcompute.VirtualMachine
+	pager := a.vmCli.NewListAllPager(options)
+	for pager.More() {
+		nextResult, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list virtual machines: %w", err)
+		}
+		if nextResult.VirtualMachineListResult.Value != nil {
+			resp = append(resp, nextResult.VirtualMachineListResult.Value...)
+		}
+	}
+	return resp, nil
 }

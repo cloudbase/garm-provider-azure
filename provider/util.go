@@ -5,43 +5,24 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 
 	"github.com/cloudbase/garm/params"
+	"github.com/cloudbase/garm/runner/providers/common"
 )
 
-/*
-	type BootstrapInstance struct {
-		Name  string                              `json:"name"`
-		Tools []*github.RunnerApplicationDownload `json:"tools"`
-		// RepoURL is the URL the github runner agent needs to configure itself.
-		RepoURL string `json:"repo_url"`
-		// CallbackUrl is the URL where the instance can send a post, signaling
-		// progress or status.
-		CallbackURL string `json:"callback-url"`
-		// MetadataURL is the URL where instances can fetch information needed to set themselves up.
-		MetadataURL string `json:"metadata-url"`
-		// InstanceToken is the token that needs to be set by the instance in the headers
-		// in order to send updated back to the garm via CallbackURL.
-		InstanceToken string `json:"instance-token"`
-		// SSHKeys are the ssh public keys we may want to inject inside the runners, if the
-		// provider supports it.
-		SSHKeys []string `json:"ssh-keys"`
-		// ExtraSpecs is an opaque raw json that gets sent to the provider
-		// as part of the bootstrap params for instances. It can contain
-		// any kind of data needed by providers. The contents of this field means
-		// nothing to garm itself. We don't act on the information in this field at
-		// all. We only validate that it's a proper json.
-		ExtraSpecs json.RawMessage `json:"extra_specs,omitempty"`
-
-		CACertBundle []byte `json:"ca-cert-bundle"`
-
-		OSArch OSArch   `json:"arch"`
-		Flavor string   `json:"flavor"`
-		Image  string   `json:"image"`
-		Labels []string `json:"labels"`
-		PoolID string   `json:"pool_id"`
+var (
+	powerStateMap = map[string]string{
+		"PowerState/deallocated":  "stopped",
+		"PowerState/deallocating": "stopped",
+		"PowerState/running":      "running",
+		"PowerState/starting":     "pending_create",
+		"PowerState/stopped":      "stopped",
+		"PowerState/stopping":     "stopped",
+		"PowerState/unknown":      "unknown",
 	}
-*/
+)
+
 func tagsFromBootstrapParams(bootstrapParams params.BootstrapInstance) (map[string]*string, error) {
 	imageDetails, err := urnToImageDetails(bootstrapParams.Image)
 	if err != nil {
@@ -78,5 +59,53 @@ func urnToImageDetails(urn string) (imageDetails, error) {
 		Offer:     fields[1],
 		SKU:       fields[2],
 		Version:   fields[3],
+	}, nil
+}
+
+func azurePowerStateToGarmPowerState(vm armcompute.VirtualMachine) string {
+	if vm.Properties == nil || vm.Properties.InstanceView == nil || vm.Properties.InstanceView.Statuses == nil {
+		return "unknown"
+	}
+
+	for _, val := range vm.Properties.InstanceView.Statuses {
+		if val.Code != nil {
+			code, ok := powerStateMap[*val.Code]
+			if ok {
+				return code
+			}
+		}
+	}
+
+	return "unknown"
+}
+
+func azureInstanceToParamsInstance(vm armcompute.VirtualMachine) (params.Instance, error) {
+	if vm.Name == nil {
+		return params.Instance{}, fmt.Errorf("missing VM name")
+	}
+	os_type, ok := vm.Tags["os_type"]
+	if !ok {
+		return params.Instance{}, fmt.Errorf("missing os_type tag in VM")
+	}
+	os_arch, ok := vm.Tags["os_arch"]
+	if !ok {
+		return params.Instance{}, fmt.Errorf("missing os_arch tag in VM")
+	}
+	os_version, ok := vm.Tags["os_version"]
+	if !ok {
+		return params.Instance{}, fmt.Errorf("missing os_version tag in VM")
+	}
+	os_name, ok := vm.Tags["os_name"]
+	if !ok {
+		return params.Instance{}, fmt.Errorf("missing os_name tag in VM")
+	}
+	return params.Instance{
+		ProviderID: *vm.Name,
+		Name:       *vm.Name,
+		OSType:     params.OSType(*os_type),
+		OSArch:     params.OSArch(*os_arch),
+		OSName:     *os_name,
+		OSVersion:  *os_version,
+		Status:     common.InstanceStatus(azurePowerStateToGarmPowerState(vm)),
 	}, nil
 }

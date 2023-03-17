@@ -15,6 +15,8 @@
 package util
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -22,6 +24,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math/big"
@@ -31,6 +34,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf16"
 
 	"github.com/cloudbase/garm/cloudconfig"
 	"github.com/cloudbase/garm/config"
@@ -391,4 +395,59 @@ func NewID() string {
 	}
 	newUUID := uuid.New()
 	return toBase62(newUUID[:])
+}
+
+func UTF16FromString(s string) ([]uint16, error) {
+	buf := make([]uint16, 0, len(s)*2+1)
+	for _, r := range s {
+		buf = utf16.AppendRune(buf, r)
+	}
+	return utf16.AppendRune(buf, '\x00'), nil
+}
+
+func UTF16ToString(s []uint16) string {
+	for i, v := range s {
+		if v == 0 {
+			s = s[0:i]
+			break
+		}
+	}
+	return string(utf16.Decode(s))
+}
+
+func Uint16ToByteArray(u []uint16) []byte {
+	ret := make([]byte, (len(u)-1)*2)
+	for i := 1; i < len(u)-1; i++ {
+		binary.LittleEndian.PutUint16(ret[i*2:], uint16(u[i]))
+	}
+	return ret
+}
+
+func UTF16EncodedByteArrayFromString(s string) ([]byte, error) {
+	asUint16, err := UTF16FromString(s)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode to uint16: %w", err)
+	}
+	asBytes := Uint16ToByteArray(asUint16)
+	return asBytes, nil
+}
+
+func CompressData(data []byte) ([]byte, error) {
+	var b bytes.Buffer
+	gz := gzip.NewWriter(&b)
+
+	_, err := gz.Write(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compress data: %w", err)
+	}
+
+	if err = gz.Flush(); err != nil {
+		return nil, fmt.Errorf("failed to flush buffer: %w", err)
+	}
+
+	if err = gz.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close buffer: %w", err)
+	}
+
+	return b.Bytes(), nil
 }
