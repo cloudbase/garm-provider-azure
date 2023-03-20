@@ -6,9 +6,10 @@ import (
 	"text/template"
 )
 
-var WindowsSetupScriptTemplate = `Param(
-	[Parameter(Mandatory=$true)]
-	[string]$Token
+var WindowsSetupScriptTemplate = `#ps1_sysnative
+Param(
+	[Parameter(Mandatory=$false)]
+	[string]$Token="{{.CallbackToken}}"
 )
 
 $ErrorActionPreference="Stop"
@@ -179,6 +180,9 @@ $PEMData = @"
 
 function Install-Runner() {
 	$CallbackURL="{{.CallbackURL}}"
+	if ($Token.Length -eq 0) {
+		Throw "missing callback authentication token"
+	}
 	try {
 		$MetadataURL="{{.MetadataURL}}"
 		$DownloadURL="{{.DownloadURL}}"
@@ -237,6 +241,7 @@ type InstallRunnerParams struct {
 	CallbackURL       string
 	TempDownloadToken string
 	CABundle          string
+	CallbackToken     string
 }
 
 func GetWindowsInstallRunnerScript(params InstallRunnerParams) ([]byte, error) {
