@@ -93,6 +93,11 @@ var (
 		"linux":   "linux",
 		"windows": "win",
 	}
+
+	githubOSTag = map[params.OSType]string{
+		params.Linux:   "Linux",
+		params.Windows: "Windows",
+	}
 )
 
 func ResolveToGithubArch(arch string) (string, error) {
@@ -102,6 +107,15 @@ func ResolveToGithubArch(arch string) (string, error) {
 	}
 
 	return ghArch, nil
+}
+
+func ResolveToGithubTag(os params.OSType) (string, error) {
+	ghOS, ok := githubOSTag[os]
+	if !ok {
+		return "", runnerErrors.NewNotFoundError("os %s is unknown", os)
+	}
+
+	return ghOS, nil
 }
 
 func ResolveToGithubOSType(osType string) (string, error) {
@@ -417,7 +431,7 @@ func UTF16ToString(s []uint16) string {
 
 func Uint16ToByteArray(u []uint16) []byte {
 	ret := make([]byte, (len(u)-1)*2)
-	for i := 1; i < len(u)-1; i++ {
+	for i := 0; i < len(u)-1; i++ {
 		binary.LittleEndian.PutUint16(ret[i*2:], uint16(u[i]))
 	}
 	return ret

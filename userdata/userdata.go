@@ -114,7 +114,7 @@ function Invoke-APICall() {
 		[string]$CallbackURL
     )
 	PROCESS{
-		Invoke-WebRequest -Headers @{"Accept"="application/json"; "Authorization"="Bearer $Token"} -Uri $CallbackURL -Body (ConvertTo-Json $Payload) | Out-Null
+		Invoke-WebRequest -UseBasicParsing -Method Post -Headers @{"Accept"="application/json"; "Authorization"="Bearer $Token"} -Uri $CallbackURL -Body (ConvertTo-Json $Payload) | Out-Null
 	}
 }
 
@@ -131,7 +131,7 @@ function Update-GarmStatus() {
 			"status"="installing"
 			"message"=$Message
 		}
-		Invoke-APICall -Payload (ConvertTo-Json $body) -CallbackURL $CallbackURL | Out-Null
+		Invoke-APICall -Payload $body -CallbackURL $CallbackURL | Out-Null
 	}
 }
 
@@ -141,7 +141,7 @@ function Invoke-GarmSuccess() {
         [parameter(Mandatory=$true)]
         [string]$Message,
 		[parameter(Mandatory=$true)]
-        [string]$AgentID,
+        [int64]$AgentID,
 		[parameter(Mandatory=$true)]
 		[string]$CallbackURL
     )
@@ -151,7 +151,7 @@ function Invoke-GarmSuccess() {
 			"message"=$Message
 			"agent_id"=$AgentID
 		}
-		Invoke-APICall -Payload (ConvertTo-Json $body) -CallbackURL $CallbackURL | Out-Null
+		Invoke-APICall -Payload $body -CallbackURL $CallbackURL | Out-Null
 	}
 }
 
@@ -168,7 +168,7 @@ function Invoke-GarmFailure() {
 			"status"="failed"
 			"message"=$Message
 		}
-		Invoke-APICall -Payload (ConvertTo-Json $body) -CallbackURL $CallbackURL | Out-Null
+		Invoke-APICall -Payload $body -CallbackURL $CallbackURL | Out-Null
 		Throw $Message
 	}
 }
@@ -191,7 +191,7 @@ function Install-Runner() {
 			Import-Certificate -CertificatePath $env:TMP\garm-ca.pem
 		}
 
-		$GithubRegistrationToken = Invoke-WebRequest -Headers @{"Accept"="application/json"; "Authorization"="Bearer $Token"} -Uri $MetadataURL/runner-registration-token/
+		$GithubRegistrationToken = Invoke-WebRequest -UseBasicParsing -Headers @{"Accept"="application/json"; "Authorization"="Bearer $Token"} -Uri $MetadataURL/runner-registration-token/
 		Update-GarmStatus -CallbackURL $CallbackURL -Message "downloading tools from $DownloadURL"
 
 		$downloadToken="{{.TempDownloadToken}}"
@@ -222,9 +222,10 @@ function Install-Runner() {
 		Invoke-GarmFailure -CallbackURL $CallbackURL -Message $_
 	}
 }
+Install-Runner
 `
 
-var WindowsRunScriptTemplate = `try { gc -Raw C:\\AzureData\\CustomData.bin | sc /run.ps1; /run.ps1 -Token "{{.CallbackToken}}" } finally { rm -Force -ErrorAction SilentlyContinue /run.ps1 }`
+var WindowsRunScriptTemplate = "try { gc -Raw C:/AzureData/CustomData.bin | sc /run.ps1; /run.ps1 -Token \"{{.CallbackToken}}\" } finally { rm -Force -ErrorAction SilentlyContinue /run.ps1 }"
 
 type InstallRunnerParams struct {
 	FileName          string
@@ -239,7 +240,7 @@ type InstallRunnerParams struct {
 }
 
 func GetWindowsInstallRunnerScript(params InstallRunnerParams) ([]byte, error) {
-	t, err := template.New("").Parse(WindowsRunScriptTemplate)
+	t, err := template.New("").Parse(WindowsSetupScriptTemplate)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing template: %w", err)
 	}

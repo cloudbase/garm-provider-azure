@@ -27,7 +27,7 @@ func main() {
 
 	result, err := execution.Run(ctx, prov, executionEnv)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to run command: %s", err)
+		fmt.Fprintf(os.Stderr, "failed to run command: %+v\n", err)
 		os.Exit(1)
 	}
 	if len(result) > 0 {

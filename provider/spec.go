@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
@@ -22,16 +23,17 @@ const (
 	defaultDiskSizeGB int32 = 127
 )
 
-func newExtraSpecsFromBootstrapData(data params.BootstrapInstance) extraSpecs {
-	var spec extraSpecs
-	if err := json.Unmarshal(data.ExtraSpecs, &spec); err != nil {
-		return extraSpecs{
-			AdminUsername:      defaultAdminName,
-			StorageAccountType: defaultStorageAccountType,
+func newExtraSpecsFromBootstrapData(data params.BootstrapInstance) (*extraSpecs, error) {
+	spec := &extraSpecs{}
+
+	if len(data.ExtraSpecs) > 0 {
+		if err := json.Unmarshal(data.ExtraSpecs, spec); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal extra specs: %w", err)
 		}
 	}
 	spec.ensureValidExtraSpec()
-	return spec
+
+	return spec, nil
 }
 
 type extraSpecs struct {
@@ -87,44 +89,19 @@ func (e *extraSpecs) ensureValidExtraSpec() {
 	}
 }
 
-//	type BootstrapInstance struct {
-//	    Name  string                              `json:"name"`
-//	    Tools []*github.RunnerApplicationDownload `json:"tools"`
-//	    // RepoURL is the URL the github runner agent needs to configure itself.
-//	    RepoURL string `json:"repo_url"`
-//	    // CallbackUrl is the URL where the instance can send a post, signaling
-//	    // progress or status.
-//	    CallbackURL string `json:"callback-url"`
-//	    // MetadataURL is the URL where instances can fetch information needed to set themselves up.
-//	    MetadataURL string `json:"metadata-url"`
-//	    // InstanceToken is the token that needs to be set by the instance in the headers
-//	    // in order to send updated back to the garm via CallbackURL.
-//	    InstanceToken string `json:"instance-token"`
-//	    // SSHKeys are the ssh public keys we may want to inject inside the runners, if the
-//	    // provider supports it.
-//	    SSHKeys []string `json:"ssh-keys"`
-//	    // ExtraSpecs is an opaque raw json that gets sent to the provider
-//	    // as part of the bootstrap params for instances. It can contain
-//	    // any kind of data needed by providers. The contents of this field means
-//	    // nothing to garm itself. We don't act on the information in this field at
-//	    // all. We only validate that it's a proper json.
-//
-//	    ExtraSpecs json.RawMessage `json:"extra_specs,omitempty"`
-//	    CACertBundle []byte `json:"ca-cert-bundle"`
-//		    OSArch OSArch   `json:"arch"`
-//		    Flavor string   `json:"flavor"`
-//		    Image  string   `json:"image"`
-//		    Labels []string `json:"labels"`
-//		    PoolID string   `json:"pool_id"`
-//		}
-func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance) (runnerSpec, error) {
+func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance) (*runnerSpec, error) {
 	tools, err := util.GetTools(data.OSType, data.OSArch, data.Tools)
 	if err != nil {
-		return runnerSpec{}, fmt.Errorf("failed to get tools: %s", err)
+		return nil, fmt.Errorf("failed to get tools: %s", err)
 	}
 
-	extraSpecs := newExtraSpecsFromBootstrapData(data)
-	return runnerSpec{
+	extraSpecs, err := newExtraSpecsFromBootstrapData(data)
+	if err != nil {
+		return nil, fmt.Errorf("error loading extra specs: %w", err)
+	}
+
+	spec := &runnerSpec{
+		VMSize:             data.Flavor,
 		AllocatePublicIP:   extraSpecs.AllocatePublicIP,
 		OpenInboundPorts:   extraSpecs.OpenInboundPorts,
 		AdminUsername:      extraSpecs.AdminUsername,
@@ -132,7 +109,13 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance) (runnerSpec
 		DiskSizeGB:         extraSpecs.DiskSizeGB,
 		BootstrapParams:    data,
 		Tools:              tools,
-	}, nil
+	}
+
+	if err := spec.Validate(); err != nil {
+		return nil, fmt.Errorf("error validating spec: %w", err)
+	}
+
+	return spec, nil
 }
 
 type runnerSpec struct {
@@ -145,6 +128,33 @@ type runnerSpec struct {
 	BootstrapParams    params.BootstrapInstance
 	Tools              github.RunnerApplicationDownload
 	UseCloudInit       bool
+}
+
+func (r runnerSpec) Validate() error {
+	if r.VMSize == "" {
+		return fmt.Errorf("missing flavor")
+	}
+
+	if r.AdminUsername == "" {
+		return fmt.Errorf("missing admin username")
+	}
+	if r.StorageAccountType == "" {
+		return fmt.Errorf("missing storage account type")
+	}
+
+	if r.DiskSizeGB == 0 {
+		return fmt.Errorf("invalid disk size")
+	}
+
+	if r.Tools.DownloadURL == nil {
+		return fmt.Errorf("missing tools")
+	}
+
+	if r.BootstrapParams.Name == "" || r.BootstrapParams.OSType == "" || r.BootstrapParams.InstanceToken == "" {
+		return fmt.Errorf("invalid bootstrap params")
+	}
+
+	return nil
 }
 
 func (r runnerSpec) ImageDetails() (imageDetails, error) {
@@ -167,7 +177,32 @@ func (r runnerSpec) composeCloudInitUserdata() ([]byte, error) {
 }
 
 func (r runnerSpec) composeWindowsUserdata() ([]byte, error) {
-	return nil, nil
+	if r.Tools.Filename == nil || r.Tools.DownloadURL == nil {
+		return nil, fmt.Errorf("missing filename or download url in tools")
+	}
+	params := userdata.InstallRunnerParams{
+		FileName:     *r.Tools.Filename,
+		DownloadURL:  *r.Tools.DownloadURL,
+		RepoURL:      r.BootstrapParams.RepoURL,
+		MetadataURL:  r.BootstrapParams.MetadataURL,
+		RunnerName:   r.BootstrapParams.Name,
+		RunnerLabels: strings.Join(r.BootstrapParams.Labels, ","),
+		CallbackURL:  r.BootstrapParams.CallbackURL,
+	}
+
+	if len(r.BootstrapParams.CACertBundle) > 0 {
+		params.CABundle = string(r.BootstrapParams.CACertBundle)
+	}
+
+	if r.Tools.TempDownloadToken != nil {
+		params.TempDownloadToken = *r.Tools.TempDownloadToken
+	}
+
+	udata, err := userdata.GetWindowsInstallRunnerScript(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate userdata: %w", err)
+	}
+	return udata, nil
 }
 
 func (r runnerSpec) ComposeUserData() ([]byte, error) {
@@ -207,7 +242,7 @@ func (r runnerSpec) SecurityRules() []*armnetwork.SecurityRule {
 	return ret
 }
 
-func (r runnerSpec) GetVMExtension(location string) (*armcompute.VirtualMachineExtension, error) {
+func (r runnerSpec) GetVMExtension(location, extName string) (*armcompute.VirtualMachineExtension, error) {
 	switch r.BootstrapParams.OSType {
 	case params.Windows:
 		scriptCmd, err := userdata.GetWindowsRunScriptCommand(r.BootstrapParams.InstanceToken)
@@ -224,10 +259,10 @@ func (r runnerSpec) GetVMExtension(location string) (*armcompute.VirtualMachineE
 		ext := &armcompute.VirtualMachineExtension{
 			Location: to.Ptr(location),
 			Tags: map[string]*string{
-				"displayName": to.Ptr("config-app"),
+				"displayName": to.Ptr(extName),
 			},
 			Type: to.Ptr("Microsoft.Compute/virtualMachines/extensions"),
-			Name: to.Ptr("virtualMachineName/config-app"),
+			Name: to.Ptr(fmt.Sprintf("%s/%s", r.BootstrapParams.Name, extName)),
 			Properties: &armcompute.VirtualMachineExtensionProperties{
 				Publisher:          to.Ptr("Microsoft.Compute"),
 				Type:               to.Ptr("CustomScriptExtension"),
@@ -257,11 +292,11 @@ func (r runnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 		return nil, fmt.Errorf("failed to compose userdata: %w", err)
 	}
 
-	compressedUserData, err := util.CompressData(customData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compress data: %w", err)
+	asBase64 := base64.StdEncoding.EncodeToString(customData)
+
+	if r.VMSize == "" {
+		return nil, fmt.Errorf("missing vm size parameter")
 	}
-	asBase64 := base64.StdEncoding.EncodeToString(compressedUserData)
 
 	properties := &armcompute.VirtualMachineProperties{
 		StorageProfile: &armcompute.StorageProfile{
@@ -286,8 +321,8 @@ func (r runnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 		},
 		OSProfile: &armcompute.OSProfile{
 			CustomData: &asBase64,
-			// garm names may be longer than 15 characters, but that should be fine.
-			ComputerName:  to.Ptr(r.BootstrapParams.Name),
+			// Windows computer names may not be longer than 15 characters.
+			ComputerName:  to.Ptr(r.BootstrapParams.Name[:15]),
 			AdminUsername: to.Ptr(r.AdminUsername),
 			AdminPassword: &password,
 		},
@@ -302,7 +337,8 @@ func (r runnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 
 	if r.BootstrapParams.OSType == params.Linux {
 		properties.OSProfile.LinuxConfiguration = &armcompute.LinuxConfiguration{
-			DisablePasswordAuthentication: to.Ptr(true),
+			// password is a 24 random string that is never disclosed to anyone.
+			DisablePasswordAuthentication: to.Ptr(false),
 		}
 	}
 	return properties, nil

@@ -3,10 +3,10 @@ module github.com/cloudbase/garm-provider-azure
 go 1.19
 
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.4.0
-	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.2.2
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.0.0
+	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.0.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute v1.0.0
-	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork v1.1.0
+	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork v1.0.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources v1.0.0
 	github.com/BurntSushi/toml v1.2.1
 	github.com/cloudbase/garm v0.0.0-20230314122126-e67c08b1d4c8
@@ -14,9 +14,10 @@ require (
 )
 
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/internal v1.2.0 // indirect
-	github.com/AzureAD/microsoft-authentication-library-for-go v0.9.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.0.0 // indirect
+	github.com/AzureAD/microsoft-authentication-library-for-go v0.4.0 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
+	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
@@ -42,4 +43,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/cloudbase/garm => github.com/gabriel-samfira/garm v0.0.0-20230317111753-5a167186e21f
+replace github.com/cloudbase/garm => github.com/gabriel-samfira/garm v0.0.0-20230319234029-02dc9c386687

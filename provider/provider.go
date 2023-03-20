@@ -53,7 +53,7 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		return params.Instance{}, fmt.Errorf("invalid architecture %s (supported: %s)", bootstrapParams.OSArch, params.Amd64)
 	}
 
-	resourceTags, err := tagsFromBootstrapParams(bootstrapParams)
+	resourceTags, err := tagsFromBootstrapParams(bootstrapParams, a.controllerID)
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to get tags: %w", err)
 	}
@@ -63,6 +63,10 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		return params.Instance{}, fmt.Errorf("failed to generate spec: %w", err)
 	}
 
+	imgDetails, err := spec.ImageDetails()
+	if err != nil {
+		return params.Instance{}, fmt.Errorf("failed to get image details: %w", err)
+	}
 	_, err = a.azCli.createResourceGroup(ctx, spec.BootstrapParams.Name, resourceTags)
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to create resource group: %w", err)
@@ -70,7 +74,7 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 
 	defer func() {
 		if err != nil {
-			a.azCli.deleteResourceGroup(ctx, spec.BootstrapParams.Name)
+			a.azCli.deleteResourceGroup(ctx, spec.BootstrapParams.Name, true)
 		}
 	}()
 
@@ -84,13 +88,17 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		return params.Instance{}, fmt.Errorf("failed to create subnet: %w", err)
 	}
 
+	var pubIPID string
 	var pubIP string
 	if spec.AllocatePublicIP {
 		publicIP, err := a.azCli.createPublicIP(ctx, spec.BootstrapParams.Name)
 		if err != nil {
 			return params.Instance{}, fmt.Errorf("failed to create public IP: %w", err)
 		}
-		pubIP = *publicIP.ID
+		if publicIP.Properties != nil && publicIP.Properties.IPAddress != nil {
+			pubIP = *publicIP.Properties.IPAddress
+		}
+		pubIPID = *publicIP.ID
 	}
 
 	nsg, err := a.azCli.createNetworkSecurityGroup(ctx, spec.BootstrapParams.Name, spec)
@@ -98,28 +106,43 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		return params.Instance{}, fmt.Errorf("failed to create network security group: %w", err)
 	}
 
-	nic, err := a.azCli.createNetWorkInterface(ctx, spec.BootstrapParams.Name, *subnet.ID, *nsg.ID, pubIP)
+	nic, err := a.azCli.createNetWorkInterface(ctx, spec.BootstrapParams.Name, *subnet.ID, *nsg.ID, pubIPID)
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to create NIC: %w", err)
 	}
 
-	vm, err := a.azCli.createVirtualMachine(ctx, spec, *nic.ID, resourceTags)
-	if err != nil {
+	if err := a.azCli.createVirtualMachine(ctx, spec, *nic.ID, resourceTags); err != nil {
 		return params.Instance{}, fmt.Errorf("failed to create VM: %w", err)
 	}
 
-	if vm == nil {
-		return params.Instance{}, fmt.Errorf("failed to get VM details")
+	// We're lying here. It takes longer for the client to finish polling than for the VM to
+	// start running the userdata. Just return that the instance is running once the request
+	// to create it goes through.
+	instance := params.Instance{
+		ProviderID: spec.BootstrapParams.Name,
+		Name:       spec.BootstrapParams.Name,
+		OSType:     spec.BootstrapParams.OSType,
+		OSArch:     spec.BootstrapParams.OSArch,
+		OSName:     imgDetails.SKU,
+		OSVersion:  imgDetails.Version,
+		Status:     "running",
 	}
-	vmParams, err := azureInstanceToParamsInstance(*vm)
-	if err != nil {
-		return params.Instance{}, fmt.Errorf("failed to get vm details: %w", err)
+
+	if pubIP != "" {
+		instance.Addresses = append(instance.Addresses, params.Address{
+			Address: pubIP,
+			Type:    params.PublicAddress,
+		})
 	}
-	return vmParams, nil
+	return instance, nil
 }
 
 // Delete instance will delete the instance in a provider.
 func (a *azureProvider) DeleteInstance(ctx context.Context, instance string) error {
+	err := a.azCli.deleteResourceGroup(ctx, instance, true)
+	if err != nil {
+		return fmt.Errorf("failed to delete instance: %w", err)
+	}
 	return nil
 }
 
@@ -144,8 +167,9 @@ func (a *azureProvider) ListInstances(ctx context.Context, poolID string) ([]par
 	}
 
 	if instances == nil {
-		return nil, fmt.Errorf("invalid instances response")
+		return []params.Instance{}, nil
 	}
+
 	resp := make([]params.Instance, len(instances))
 	for idx, val := range instances {
 		if val == nil {
@@ -167,10 +191,10 @@ func (a *azureProvider) RemoveAllInstances(ctx context.Context) error {
 
 // Stop shuts down the instance.
 func (a *azureProvider) Stop(ctx context.Context, instance string, force bool) error {
-	return nil
+	return a.azCli.dealocateVM(ctx, instance, instance)
 }
 
 // Start boots up an instance.
 func (a *azureProvider) Start(ctx context.Context, instance string) error {
-	return nil
+	return a.azCli.startVM(ctx, instance)
 }

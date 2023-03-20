@@ -13,6 +13,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
@@ -85,7 +86,7 @@ func UnmarshalAsXML(resp *http.Response, v interface{}) error {
 // Drain reads the response body to completion then closes it.  The bytes read are discarded.
 func Drain(resp *http.Response) {
 	if resp != nil && resp.Body != nil {
-		_, _ = io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(ioutil.Discard, resp.Body)
 		resp.Body.Close()
 	}
 }

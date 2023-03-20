@@ -41,7 +41,7 @@ func (c *Config) GetCredentials() (azcore.TokenCredential, error) {
 }
 
 func (c *Config) Validate() error {
-	if _, err := c.GetCredentials(); err != nil {
+	if _, err := c.Credentials.Auth(); err != nil {
 		return fmt.Errorf("failed to validate credentials: %w", err)
 	}
 

@@ -3,9 +3,10 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
@@ -20,7 +21,7 @@ func newAzCLI(cfg *config.Config) (*azureCli, error) {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	opts := policy.ClientOptions{
+	opts := arm.ClientOptions{
 		ClientOptions: cfg.Credentials.ClientOptions,
 	}
 	resourceGroupClient, err := armresources.NewResourceGroupsClient(cfg.Credentials.SubscriptionID, creds, &opts)
@@ -152,7 +153,11 @@ func (a *azureCli) createSubnet(ctx context.Context, baseName, subnetCIDR string
 	return &resp.Subnet, nil
 }
 
-func (a *azureCli) createNetworkSecurityGroup(ctx context.Context, baseName string, spec runnerSpec) (*armnetwork.SecurityGroup, error) {
+func (a *azureCli) createNetworkSecurityGroup(ctx context.Context, baseName string, spec *runnerSpec) (*armnetwork.SecurityGroup, error) {
+	if spec == nil {
+		return nil, fmt.Errorf("invalid nil runner spec")
+	}
+
 	rules := spec.SecurityRules()
 	parameters := armnetwork.SecurityGroup{
 		Location: to.Ptr(a.location),
@@ -235,10 +240,13 @@ func (a *azureCli) createPublicIP(ctx context.Context, baseName string) (*armnet
 	return &resp.PublicIPAddress, err
 }
 
-func (a *azureCli) createVirtualMachine(ctx context.Context, spec runnerSpec, networkInterfaceID string, tags map[string]*string) (*armcompute.VirtualMachine, error) {
+func (a *azureCli) createVirtualMachine(ctx context.Context, spec *runnerSpec, networkInterfaceID string, tags map[string]*string) error {
+	if spec == nil {
+		return fmt.Errorf("invalid nil runner spec")
+	}
 	properties, err := spec.GetNewVMProperties(networkInterfaceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get new VM properties: %w", err)
+		return fmt.Errorf("failed to get new VM properties: %w", err)
 	}
 	parameters := armcompute.VirtualMachine{
 		Location: to.Ptr(a.location),
@@ -249,37 +257,45 @@ func (a *azureCli) createVirtualMachine(ctx context.Context, spec runnerSpec, ne
 		Properties: properties,
 	}
 
-	pollerResponse, err := a.vmCli.BeginCreateOrUpdate(ctx, spec.BootstrapParams.Name, spec.BootstrapParams.Name, parameters, nil)
+	_, err = a.vmCli.BeginCreateOrUpdate(ctx, spec.BootstrapParams.Name, spec.BootstrapParams.Name, parameters, nil)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to create VM: %w", err)
 	}
 
-	computeExtension, err := spec.GetVMExtension(a.location)
+	extName := "CustomScriptExtension"
+	computeExtension, err := spec.GetVMExtension(a.location, extName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get vm extension: %w", err)
+		return fmt.Errorf("failed to get vm extension: %w", err)
 	}
 
 	if computeExtension != nil {
-		_, err = a.extCli.BeginCreateOrUpdate(ctx, spec.BootstrapParams.Name, spec.BootstrapParams.Name, "CustomScriptExtension", *computeExtension, nil)
+		_, err = a.extCli.BeginCreateOrUpdate(ctx, spec.BootstrapParams.Name, spec.BootstrapParams.Name, extName, *computeExtension, nil)
 		if err != nil {
-			return nil, err
+			return fmt.Errorf("failed to create vm extension: %w", err)
 		}
 	}
 
-	resp, err := pollerResponse.PollUntilDone(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return &resp.VirtualMachine, nil
+	return nil
 }
 
-func (a *azureCli) deleteResourceGroup(ctx context.Context, resourceGroup string) error {
-	opts := &armresources.ResourceGroupsClientBeginDeleteOptions{
-		ForceDeletionTypes: to.Ptr("forceDeletionTypes=Microsoft.Compute/virtualMachines,Microsoft.Compute/virtualMachineScaleSets"),
+func (a *azureCli) deleteResourceGroup(ctx context.Context, resourceGroup string, forceDelete bool) error {
+	opts := &armresources.ResourceGroupsClientBeginDeleteOptions{}
+	if forceDelete {
+		opts.ForceDeletionTypes = to.Ptr("forceDeletionTypes=Microsoft.Compute/virtualMachines")
 	}
+
 	pollerResponse, err := a.rgCli.BeginDelete(ctx, resourceGroup, opts)
 	if err != nil {
+		asRespCode, ok := err.(*azcore.ResponseError)
+		if ok {
+			if asRespCode.StatusCode == http.StatusNotFound {
+				return nil
+			}
+			// We may not have a VM created yet, so force delete will fail. Retry without force delete.
+			if asRespCode.ErrorCode == "UnsupportedForceDeletionResourceTypeInQueryString" {
+				return a.deleteResourceGroup(ctx, resourceGroup, false)
+			}
+		}
 		return fmt.Errorf("failed to delete resource group: %w", err)
 	}
 
@@ -302,31 +318,33 @@ func (a *azureCli) getInstance(ctx context.Context, rgName, vmName string) (armc
 	return vm.VirtualMachine, nil
 }
 
-func (a *azureCli) listResourceGroups(ctx context.Context, poolID string) ([]*armresources.ResourceGroup, error) {
-	// $filter=tagName eq 'tag1' and tagValue eq 'Value1'
-	filter := fmt.Sprintf("$filter=tagName eq '%s' and tagValue eq '%s'", poolIDTagName, poolID)
-	opts := &armresources.ResourceGroupsClientListOptions{
-		Filter: to.Ptr(filter),
+func (a *azureCli) dealocateVM(ctx context.Context, rgName, vmName string) error {
+	poller, err := a.vmCli.BeginDeallocate(ctx, rgName, vmName, nil)
+	if err != nil {
+		return fmt.Errorf("failed to dealocate VM: %w", err)
 	}
-	pager := a.rgCli.NewListPager(opts)
-	var resourceGroups []*armresources.ResourceGroup
-	for pager.More() {
-		nextResult, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list resource groups: %w", err)
-		}
-		if nextResult.ResourceGroupListResult.Value != nil {
-			resourceGroups = append(resourceGroups, nextResult.ResourceGroupListResult.Value...)
-		}
+	_, err = poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to dealocate vm: %w", err)
 	}
-	return resourceGroups, nil
+	return nil
+}
+
+func (a *azureCli) startVM(ctx context.Context, vmName string) error {
+	poller, err := a.vmCli.BeginStart(ctx, vmName, vmName, nil)
+	if err != nil {
+		return fmt.Errorf("failed to start VM: %w", err)
+	}
+
+	if _, err := poller.PollUntilDone(ctx, nil); err != nil {
+		return fmt.Errorf("failed to start VM: %w", err)
+	}
+
+	return nil
 }
 
 func (a *azureCli) listVirtualMachines(ctx context.Context, poolID string) ([]*armcompute.VirtualMachine, error) {
-	filter := fmt.Sprintf("[?tags.%s == '%s']", poolIDTagName, poolID)
-	options := &armcompute.VirtualMachinesClientListAllOptions{
-		Filter: to.Ptr(filter),
-	}
+	options := &armcompute.VirtualMachinesClientListAllOptions{}
 	var resp []*armcompute.VirtualMachine
 	pager := a.vmCli.NewListAllPager(options)
 	for pager.More() {
@@ -335,7 +353,17 @@ func (a *azureCli) listVirtualMachines(ctx context.Context, poolID string) ([]*a
 			return nil, fmt.Errorf("failed to list virtual machines: %w", err)
 		}
 		if nextResult.VirtualMachineListResult.Value != nil {
-			resp = append(resp, nextResult.VirtualMachineListResult.Value...)
+			for _, vm := range nextResult.VirtualMachineListResult.Value {
+				// Sadly, there is no server side filter by tags on this resource.
+				if vm.Tags == nil {
+					continue
+				}
+				tag, ok := vm.Tags[poolIDTagName]
+				if !ok || *tag != poolID {
+					continue
+				}
+				resp = append(resp, vm)
+			}
 		}
 	}
 	return resp, nil

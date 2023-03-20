@@ -21,20 +21,30 @@ var (
 		"PowerState/stopping":     "stopped",
 		"PowerState/unknown":      "unknown",
 	}
+
+	provisioningStateMap = map[string]string{
+		"Creating":  "pending_create",
+		"Updating":  "pending_create",
+		"Migrating": "pending_create",
+		"Failed":    "error",
+		"Succeeded": "running",
+		"Deleting":  "pending_delete",
+	}
 )
 
-func tagsFromBootstrapParams(bootstrapParams params.BootstrapInstance) (map[string]*string, error) {
+func tagsFromBootstrapParams(bootstrapParams params.BootstrapInstance, controllerID string) (map[string]*string, error) {
 	imageDetails, err := urnToImageDetails(bootstrapParams.Image)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse image: %w", err)
 	}
 
-	// TAGS="garm_controller_id=${GARM_CONTROLLER_ID} garm_pool_id=${GARM_POOL_ID} os_type=${OS_TYPE} os_name=${OS_NAME} os_version=${OS_VERSION} os_arch=${ARCH}"
 	ret := map[string]*string{
-		"os_arch":     to.Ptr(string(bootstrapParams.OSArch)),
-		"os_version":  to.Ptr(imageDetails.Version),
-		"os_name":     to.Ptr(imageDetails.SKU),
-		poolIDTagName: to.Ptr(bootstrapParams.PoolID),
+		"os_arch":           to.Ptr(string(bootstrapParams.OSArch)),
+		"os_version":        to.Ptr(imageDetails.Version),
+		"os_name":           to.Ptr(imageDetails.SKU),
+		"os_type":           to.Ptr(string(bootstrapParams.OSType)),
+		poolIDTagName:       to.Ptr(bootstrapParams.PoolID),
+		controllerIDTagName: to.Ptr(controllerID),
 	}
 
 	return ret, nil
@@ -63,16 +73,20 @@ func urnToImageDetails(urn string) (imageDetails, error) {
 }
 
 func azurePowerStateToGarmPowerState(vm armcompute.VirtualMachine) string {
-	if vm.Properties == nil || vm.Properties.InstanceView == nil || vm.Properties.InstanceView.Statuses == nil {
-		return "unknown"
+	if vm.Properties != nil && vm.Properties.InstanceView != nil && vm.Properties.InstanceView.Statuses != nil {
+		for _, val := range vm.Properties.InstanceView.Statuses {
+			if val.Code != nil {
+				code, ok := powerStateMap[*val.Code]
+				if ok {
+					return code
+				}
+			}
+		}
 	}
 
-	for _, val := range vm.Properties.InstanceView.Statuses {
-		if val.Code != nil {
-			code, ok := powerStateMap[*val.Code]
-			if ok {
-				return code
-			}
+	if vm.Properties != nil && vm.Properties.ProvisioningState != nil {
+		if status, ok := provisioningStateMap[*vm.Properties.ProvisioningState]; ok {
+			return status
 		}
 	}
 

@@ -13,6 +13,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
 )
 
@@ -78,7 +79,17 @@ func NewDeviceCodeCredential(options *DeviceCodeCredentialOptions) (*DeviceCodeC
 		cp = *options
 	}
 	cp.init()
-	c, err := getPublicClient(cp.ClientID, cp.TenantID, &cp.ClientOptions)
+	if !validTenantID(cp.TenantID) {
+		return nil, errors.New(tenantIDValidationErr)
+	}
+	authorityHost, err := setAuthorityHost(cp.Cloud)
+	if err != nil {
+		return nil, err
+	}
+	c, err := public.New(cp.ClientID,
+		public.WithAuthority(runtime.JoinPaths(authorityHost, cp.TenantID)),
+		public.WithHTTPClient(newPipelineAdapter(&cp.ClientOptions)),
+	)
 	if err != nil {
 		return nil, err
 	}
