@@ -6,9 +6,7 @@ description = "Credentials used for my awesome project"
 
 # you can create a SP using:
 # az ad sp create-for-rbac --scopes /subscriptions/<subscription ID> --role Contributor
-tenant_id = "<ternant ID>"
-client_id = "<client ID>"
-subscription_id = "<subscription ID>"
-
-    [credentials.secret_auth]
-    client_secret = "super secret client secret"
+tenant_id = "sample_tenant_id"
+client_id = "sample_client_id"
+subscription_id = "sample_sub_id"
+client_secret = "super secret client secret"

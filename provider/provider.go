@@ -74,7 +74,7 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 
 	defer func() {
 		if err != nil {
-			a.azCli.deleteResourceGroup(ctx, spec.BootstrapParams.Name, true)
+			a.azCli.deleteResourceGroup(ctx, spec.BootstrapParams.Name, true) //nolint
 		}
 	}()
 

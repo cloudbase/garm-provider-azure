@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
@@ -168,49 +167,14 @@ func (r runnerSpec) ImageDetails() (imageDetails, error) {
 	return imgDetails, nil
 }
 
-func (r runnerSpec) composeCloudInitUserdata() ([]byte, error) {
-	udata, err := util.GetCloudConfig(r.BootstrapParams, r.Tools, r.BootstrapParams.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate userdata: %w", err)
-	}
-	return []byte(udata), nil
-}
-
-func (r runnerSpec) composeWindowsUserdata() ([]byte, error) {
-	if r.Tools.Filename == nil || r.Tools.DownloadURL == nil {
-		return nil, fmt.Errorf("missing filename or download url in tools")
-	}
-	params := userdata.InstallRunnerParams{
-		FileName:     *r.Tools.Filename,
-		DownloadURL:  *r.Tools.DownloadURL,
-		RepoURL:      r.BootstrapParams.RepoURL,
-		MetadataURL:  r.BootstrapParams.MetadataURL,
-		RunnerName:   r.BootstrapParams.Name,
-		RunnerLabels: strings.Join(r.BootstrapParams.Labels, ","),
-		CallbackURL:  r.BootstrapParams.CallbackURL,
-	}
-
-	if len(r.BootstrapParams.CACertBundle) > 0 {
-		params.CABundle = string(r.BootstrapParams.CACertBundle)
-	}
-
-	if r.Tools.TempDownloadToken != nil {
-		params.TempDownloadToken = *r.Tools.TempDownloadToken
-	}
-
-	udata, err := userdata.GetWindowsInstallRunnerScript(params)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate userdata: %w", err)
-	}
-	return udata, nil
-}
-
 func (r runnerSpec) ComposeUserData() ([]byte, error) {
 	switch r.BootstrapParams.OSType {
-	case params.Linux:
-		return r.composeCloudInitUserdata()
-	case params.Windows:
-		return r.composeWindowsUserdata()
+	case params.Linux, params.Windows:
+		udata, err := util.GetCloudConfig(r.BootstrapParams, r.Tools, r.BootstrapParams.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate userdata: %w", err)
+		}
+		return []byte(udata), nil
 	}
 	return nil, fmt.Errorf("unsupported OS type for cloud config: %s", r.BootstrapParams.OSType)
 }
@@ -290,6 +254,10 @@ func (r runnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 	customData, err := r.ComposeUserData()
 	if err != nil {
 		return nil, fmt.Errorf("failed to compose userdata: %w", err)
+	}
+
+	if len(customData) == 0 {
+		return nil, fmt.Errorf("failed to generate custom data")
 	}
 
 	asBase64 := base64.StdEncoding.EncodeToString(customData)

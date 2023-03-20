@@ -43,4 +43,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/cloudbase/garm => github.com/gabriel-samfira/garm v0.0.0-20230319234029-02dc9c386687
+replace github.com/cloudbase/garm => github.com/gabriel-samfira/garm v0.0.0-20230320172526-1067936d3faa

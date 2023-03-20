@@ -94,12 +94,16 @@ var (
 		"windows": "win",
 	}
 
+	//
 	githubOSTag = map[params.OSType]string{
 		params.Linux:   "Linux",
 		params.Windows: "Windows",
 	}
 )
 
+// ResolveToGithubArch returns the cpu architecture as it is defined in the GitHub
+// tools download list. We use it to find the proper tools for the OS/Arch combo we're
+// deploying.
 func ResolveToGithubArch(arch string) (string, error) {
 	ghArch, ok := githubArchMapping[arch]
 	if !ok {
@@ -109,19 +113,25 @@ func ResolveToGithubArch(arch string) (string, error) {
 	return ghArch, nil
 }
 
-func ResolveToGithubTag(os params.OSType) (string, error) {
-	ghOS, ok := githubOSTag[os]
+// ResolveToGithubArch returns the OS type as it is defined in the GitHub
+// tools download list. We use it to find the proper tools for the OS/Arch combo we're
+// deploying.
+func ResolveToGithubOSType(osType string) (string, error) {
+	ghOS, ok := githubOSTypeMap[osType]
 	if !ok {
-		return "", runnerErrors.NewNotFoundError("os %s is unknown", os)
+		return "", runnerErrors.NewNotFoundError("os %s is unknown", osType)
 	}
 
 	return ghOS, nil
 }
 
-func ResolveToGithubOSType(osType string) (string, error) {
-	ghOS, ok := githubOSTypeMap[osType]
+// ResolveToGithubTag returns the default OS tag that self hosted runners automatically
+// (and forcefully) adds to every runner that gets deployed. We need to keep track of those
+// tags internally as well.
+func ResolveToGithubTag(os params.OSType) (string, error) {
+	ghOS, ok := githubOSTag[os]
 	if !ok {
-		return "", runnerErrors.NewNotFoundError("os %s is unknown", osType)
+		return "", runnerErrors.NewNotFoundError("os %s is unknown", os)
 	}
 
 	return ghOS, nil
@@ -216,8 +226,6 @@ func GithubClient(ctx context.Context, token string, credsDetails params.GithubC
 }
 
 func GetCloudConfig(bootstrapParams params.BootstrapInstance, tools github.RunnerApplicationDownload, runnerName string) (string, error) {
-	cloudCfg := cloudconfig.NewDefaultCloudInitConfig()
-
 	if tools.Filename == nil {
 		return "", fmt.Errorf("missing tools filename")
 	}
@@ -244,27 +252,39 @@ func GetCloudConfig(bootstrapParams params.BootstrapInstance, tools github.Runne
 		CallbackURL:       bootstrapParams.CallbackURL,
 		CallbackToken:     bootstrapParams.InstanceToken,
 	}
+	if bootstrapParams.CACertBundle != nil && len(bootstrapParams.CACertBundle) > 0 {
+		installRunnerParams.CABundle = string(bootstrapParams.CACertBundle)
+	}
 
-	installScript, err := cloudconfig.InstallRunnerScript(installRunnerParams)
+	installScript, err := cloudconfig.InstallRunnerScript(installRunnerParams, bootstrapParams.OSType)
 	if err != nil {
 		return "", errors.Wrap(err, "generating script")
 	}
 
-	cloudCfg.AddSSHKey(bootstrapParams.SSHKeys...)
-	cloudCfg.AddFile(installScript, "/install_runner.sh", "root:root", "755")
-	cloudCfg.AddRunCmd("/install_runner.sh")
-	cloudCfg.AddRunCmd("rm -f /install_runner.sh")
-
-	if bootstrapParams.CACertBundle != nil && len(bootstrapParams.CACertBundle) > 0 {
-		if err := cloudCfg.AddCACert(bootstrapParams.CACertBundle); err != nil {
-			return "", errors.Wrap(err, "adding CA cert bundle")
+	var asStr string
+	switch bootstrapParams.OSType {
+	case params.Linux:
+		cloudCfg := cloudconfig.NewDefaultCloudInitConfig()
+		cloudCfg.AddSSHKey(bootstrapParams.SSHKeys...)
+		cloudCfg.AddFile(installScript, "/install_runner.sh", "root:root", "755")
+		cloudCfg.AddRunCmd("/install_runner.sh")
+		cloudCfg.AddRunCmd("rm -f /install_runner.sh")
+		if bootstrapParams.CACertBundle != nil && len(bootstrapParams.CACertBundle) > 0 {
+			if err := cloudCfg.AddCACert(bootstrapParams.CACertBundle); err != nil {
+				return "", errors.Wrap(err, "adding CA cert bundle")
+			}
 		}
+		var err error
+		asStr, err = cloudCfg.Serialize()
+		if err != nil {
+			return "", errors.Wrap(err, "creating cloud config")
+		}
+	case params.Windows:
+		asStr = string(installScript)
+	default:
+		return "", fmt.Errorf("unknown os type: %s", bootstrapParams.OSType)
 	}
 
-	asStr, err := cloudCfg.Serialize()
-	if err != nil {
-		return "", errors.Wrap(err, "creating cloud config")
-	}
 	return asStr, nil
 }
 

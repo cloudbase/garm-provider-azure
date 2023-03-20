@@ -1,0 +1,1 @@
+# Garm External Azure Provider
