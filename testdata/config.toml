@@ -1,0 +1,14 @@
+location = "westeurope"
+
+[credentials]
+name = "My azure credentials"
+description = "Credentials used for my awesome project"
+
+# you can create a SP using:
+# az ad sp create-for-rbac --scopes /subscriptions/<subscription ID> --role Contributor
+tenant_id = "<ternant ID>"
+client_id = "<client ID>"
+subscription_id = "<subscription ID>"
+
+    [credentials.secret_auth]
+    client_secret = "super secret client secret"
