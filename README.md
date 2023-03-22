@@ -62,7 +62,7 @@ Each VM is created in it's own resource group with it's own virtual network, sep
 
 ## Tweaking the provider
 
-Garm supports sending opaque json encoded configs to the IaaS providers it hooks into. This allows the providers to implement some very provider specific functionality that doesn't necessarily translate well to other providers. For example, feature that may exists on Azure, may not exist on AWS or OpenStack and vice versa.
+Garm supports sending opaque json encoded configs to the IaaS providers it hooks into. This allows the providers to implement some very provider specific functionality that doesn't necessarily translate well to other providers. Features that may exists on Azure, may not exist on AWS or OpenStack and vice versa.
 
 To this end, this provider supports the following extra specs schema:
 
