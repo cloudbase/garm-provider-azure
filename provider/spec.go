@@ -41,24 +41,27 @@ type extraSpecs struct {
 	AdminUsername      string                                    `json:"admin_username"`
 	StorageAccountType armcompute.StorageAccountTypes            `json:"storage_account_type"`
 	DiskSizeGB         int32                                     `json:"disk_size_gb"`
+	ExtraTags          map[string]string                         `json:"extra_tags"`
 }
 
 func (e *extraSpecs) cleanInboundPorts() {
-	if e.OpenInboundPorts != nil {
-		tmpInbound := map[armnetwork.SecurityRuleProtocol][]int{}
-		for proto, ports := range e.OpenInboundPorts {
-			if proto != armnetwork.SecurityRuleProtocolTCP && proto != armnetwork.SecurityRuleProtocolUDP {
+	if e.OpenInboundPorts == nil {
+		e.OpenInboundPorts = map[armnetwork.SecurityRuleProtocol][]int{}
+	}
+
+	tmpInbound := map[armnetwork.SecurityRuleProtocol][]int{}
+	for proto, ports := range e.OpenInboundPorts {
+		if proto != armnetwork.SecurityRuleProtocolTCP && proto != armnetwork.SecurityRuleProtocolUDP {
+			continue
+		}
+		for _, port := range ports {
+			if port < 1 && port > 65535 {
 				continue
 			}
-			for _, port := range ports {
-				if port < 1 && port > 65535 {
-					continue
-				}
-				tmpInbound[proto] = append(tmpInbound[proto], port)
-			}
+			tmpInbound[proto] = append(tmpInbound[proto], port)
 		}
-		e.OpenInboundPorts = tmpInbound
 	}
+	e.OpenInboundPorts = tmpInbound
 }
 
 func (e *extraSpecs) cleanStorageAccountType() {
@@ -86,9 +89,13 @@ func (e *extraSpecs) ensureValidExtraSpec() {
 	if e.AdminUsername == "" {
 		e.AdminUsername = defaultAdminName
 	}
+
+	if e.ExtraTags == nil {
+		e.ExtraTags = map[string]string{}
+	}
 }
 
-func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance) (*runnerSpec, error) {
+func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerID string) (*runnerSpec, error) {
 	tools, err := util.GetTools(data.OSType, data.OSArch, data.Tools)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tools: %s", err)
@@ -97,6 +104,15 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance) (*runnerSpe
 	extraSpecs, err := newExtraSpecsFromBootstrapData(data)
 	if err != nil {
 		return nil, fmt.Errorf("error loading extra specs: %w", err)
+	}
+
+	tags, err := tagsFromBootstrapParams(data, controllerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tags: %w", err)
+	}
+
+	for name, val := range extraSpecs.ExtraTags {
+		tags[name] = to.Ptr(val)
 	}
 
 	spec := &runnerSpec{
@@ -108,6 +124,7 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance) (*runnerSpe
 		DiskSizeGB:         extraSpecs.DiskSizeGB,
 		BootstrapParams:    data,
 		Tools:              tools,
+		Tags:               tags,
 	}
 
 	if err := spec.Validate(); err != nil {
@@ -127,6 +144,7 @@ type runnerSpec struct {
 	BootstrapParams    params.BootstrapInstance
 	Tools              github.RunnerApplicationDownload
 	UseCloudInit       bool
+	Tags               map[string]*string
 }
 
 func (r runnerSpec) Validate() error {

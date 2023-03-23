@@ -53,12 +53,7 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		return params.Instance{}, fmt.Errorf("invalid architecture %s (supported: %s)", bootstrapParams.OSArch, params.Amd64)
 	}
 
-	resourceTags, err := tagsFromBootstrapParams(bootstrapParams, a.controllerID)
-	if err != nil {
-		return params.Instance{}, fmt.Errorf("failed to get tags: %w", err)
-	}
-
-	spec, err := GetRunnerSpecFromBootstrapParams(bootstrapParams)
+	spec, err := GetRunnerSpecFromBootstrapParams(bootstrapParams, a.controllerID)
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to generate spec: %w", err)
 	}
@@ -67,7 +62,7 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to get image details: %w", err)
 	}
-	_, err = a.azCli.createResourceGroup(ctx, spec.BootstrapParams.Name, resourceTags)
+	_, err = a.azCli.createResourceGroup(ctx, spec.BootstrapParams.Name, spec.Tags)
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to create resource group: %w", err)
 	}
@@ -111,7 +106,7 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		return params.Instance{}, fmt.Errorf("failed to create NIC: %w", err)
 	}
 
-	if err := a.azCli.createVirtualMachine(ctx, spec, *nic.ID, resourceTags); err != nil {
+	if err := a.azCli.createVirtualMachine(ctx, spec, *nic.ID, spec.Tags); err != nil {
 		return params.Instance{}, fmt.Errorf("failed to create VM: %w", err)
 	}
 

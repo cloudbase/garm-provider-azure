@@ -111,6 +111,10 @@ To this end, this provider supports the following extra specs schema:
         "disk_size_gb": {
             "type": "integer",
             "description": "The size of the root disk in GB. Default is 127 GB."
+        },
+        "extra_tags": {
+            "type": "object",
+            "description": "Extra tags that will get added to all VMs spawned in a pool."
         }
     }
 }
@@ -126,7 +130,10 @@ An example extra specs json would look like this:
     },
     "admin_username": "johnDoe",
     "storage_account_type": "Standard_LRS",
-    "disk_size_gb": 200
+    "disk_size_gb": 200,
+    "extra_tags": {
+        "my_custom_tag": "some value"
+    }
 }
 ```
 
