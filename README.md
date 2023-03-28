@@ -23,7 +23,7 @@ Copy the binary on the same system where garm is running, and [point to it in th
 
 The config file for this external provider is a simple toml used to configure the azure credentials it needs to spin up virtual machines.
 
-For now, only service principles are supported. An example can be found [in the testdata folder](./testdata/config.toml).
+For now, only service principles credentials and azure managed identity are supported. An example can be found [in the testdata folder](./testdata/config.toml).
 
 ```toml
 location = "westeurope"
