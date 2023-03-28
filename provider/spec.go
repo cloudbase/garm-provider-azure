@@ -9,7 +9,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
-	"github.com/cloudbase/garm-provider-azure/userdata"
 	"github.com/cloudbase/garm/params"
 	"github.com/cloudbase/garm/util"
 	"github.com/google/go-github/v48/github"
@@ -18,6 +17,7 @@ import (
 const (
 	defaultAdminName          = "garm"
 	defaultStorageAccountType = armcompute.StorageAccountTypesStandardLRS
+	windowsRunScriptTemplate  = "try { gc -Raw C:/AzureData/CustomData.bin | sc /run.ps1; /run.ps1 } finally { rm -Force -ErrorAction SilentlyContinue /run.ps1 }"
 
 	defaultDiskSizeGB int32 = 127
 )
@@ -143,7 +143,6 @@ type runnerSpec struct {
 	OpenInboundPorts   map[armnetwork.SecurityRuleProtocol][]int
 	BootstrapParams    params.BootstrapInstance
 	Tools              github.RunnerApplicationDownload
-	UseCloudInit       bool
 	Tags               map[string]*string
 }
 
@@ -227,12 +226,7 @@ func (r runnerSpec) SecurityRules() []*armnetwork.SecurityRule {
 func (r runnerSpec) GetVMExtension(location, extName string) (*armcompute.VirtualMachineExtension, error) {
 	switch r.BootstrapParams.OSType {
 	case params.Windows:
-		scriptCmd, err := userdata.GetWindowsRunScriptCommand(r.BootstrapParams.InstanceToken)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get run script: %w", err)
-		}
-
-		asBytes, err := util.UTF16EncodedByteArrayFromString(string(scriptCmd))
+		asBytes, err := util.UTF16EncodedByteArrayFromString(windowsRunScriptTemplate)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encode script cmd: %w", err)
 		}

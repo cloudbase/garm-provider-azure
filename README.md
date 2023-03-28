@@ -1,4 +1,4 @@
-# Garm External Providser For Azure
+# Garm External Provider For Azure
 
 The Azure external provider allows [garm](https://github.com/cloudbase/garm) to create Linux and Windows runners on top of Azure virtual machines.
 
