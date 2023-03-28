@@ -23,7 +23,7 @@ func NewAzureProvider(configPath, controllerID string) (execution.ExternalProvid
 	if err != nil {
 		return nil, fmt.Errorf("error loading config: %w", err)
 	}
-	creds, err := conf.GetCredentials()
+	creds, err := conf.Credentials.GetCredentials()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get credentials: %w", err)
 	}

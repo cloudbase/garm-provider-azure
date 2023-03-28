@@ -29,15 +29,22 @@ For now, only service principles are supported. An example can be found [in the 
 location = "westeurope"
 
 [credentials]
-name = "My azure credentials"
-description = "Credentials used for my awesome project"
-
-# you can create a SP using:
-# az ad sp create-for-rbac --scopes /subscriptions/<subscription ID> --role Contributor
-tenant_id = "sample_tenant_id"
-client_id = "sample_client_id"
 subscription_id = "sample_sub_id"
-client_secret = "super secret client secret"
+
+    # The service principle service credentials can be used when azure managed identity
+    # is not available.
+    [credentials.service_principal]
+    # you can create a SP using:
+    # az ad sp create-for-rbac --scopes /subscriptions/<subscription ID> --role Contributor
+    tenant_id = "sample_tenant_id"
+    client_id = "sample_client_id"
+    client_secret = "super secret client secret"
+
+    # The managed identity token source is always added to the chain of possible authentication
+    # sources. The client ID can be overwritten if needed. 
+    [credentials.managed_identity]
+    # The client ID to use. This config value is optional.
+    client_id = "sample_client_id"
 ```
 
 ## Creating a pool
@@ -56,7 +63,7 @@ garm-cli pool create \
     --provider-name azure
 ```
 
-This will create a new Windows runner pool for the repo with ID ```f0b1c1c8-b605-4560-adb7-79b95e2e470c``` on azure, using the image ```MicrosoftWindowsServer:WindowsServer:2022-Datacenter:latest``` and VM size ```Standard_F2s```. You can, of course, tweak the values in the above sommand to suit your needs.
+This will create a new Windows runner pool for the repo with ID ```f0b1c1c8-b605-4560-adb7-79b95e2e470c``` on azure, using the image ```MicrosoftWindowsServer:WindowsServer:2022-Datacenter:latest``` and VM size ```Standard_F2s```. You can, of course, tweak the values in the above command to suit your needs.
 
 Each VM is created in it's own resource group with it's own virtual network, separate from all other runners.
 

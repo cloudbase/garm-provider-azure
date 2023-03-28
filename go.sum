@@ -17,6 +17,8 @@ github.com/BurntSushi/toml v1.2.1 h1:9F2/+DoOYIOksmaJFPw1tGFy1eDnIJXg+UHjuD8lTak
 github.com/BurntSushi/toml v1.2.1/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
 github.com/cloudbase/garm v0.0.0-20230328095237-569803e5e628 h1:a/49cSrZ7qrQKuQpWFWPc0oCipMuw8giGy6GXQNZ1PQ=
 github.com/cloudbase/garm v0.0.0-20230328095237-569803e5e628/go.mod h1:WaBk6Xsol7jfVLj+lhhmpmlyKCl0KapyCs2gYHlYf+o=
+github.com/cloudbase/garm v0.0.0-20230328142628-4c906d5f5b4e h1:BALzk3rI5t9WEWcxsEl9hpXneOMdE9NRkNyTqGInRBc=
+github.com/cloudbase/garm v0.0.0-20230328142628-4c906d5f5b4e/go.mod h1:WaBk6Xsol7jfVLj+lhhmpmlyKCl0KapyCs2gYHlYf+o=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/dnaeon/go-vcr v1.1.0 h1:ReYa/UBrRyQdant9B4fNHGoCNKw6qh6P0fsdGmZpR7c=

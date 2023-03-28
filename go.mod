@@ -9,7 +9,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork v1.0.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources v1.0.0
 	github.com/BurntSushi/toml v1.2.1
-	github.com/cloudbase/garm v0.0.0-20230328095237-569803e5e628
+	github.com/cloudbase/garm v0.0.0-20230328142628-4c906d5f5b4e
 	github.com/google/go-github/v48 v48.2.0
 )
 

@@ -16,7 +16,7 @@ import (
 )
 
 func newAzCLI(cfg *config.Config) (*azureCli, error) {
-	creds, err := cfg.GetCredentials()
+	creds, err := cfg.Credentials.GetCredentials()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
