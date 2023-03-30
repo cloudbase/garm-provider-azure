@@ -13,7 +13,7 @@ git clone https://github.com/cloudbase/garm-provider-azure
 Build the binary:
 
 ```bash
-cd garm-azure-provider
+cd garm-provider-azure
 go build .
 ```
 
