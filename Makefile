@@ -4,13 +4,23 @@ ROOTDIR=$(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 GOPATH ?= $(shell go env GOPATH)
 GO ?= go
 
+IMAGE_TAG = garm-provider-azure-build
+
+USER_ID=$(shell ((docker --version | grep -q podman) && echo "0" || id -u))
+USER_GROUP=$(shell ((docker --version | grep -q podman) && echo "0" || id -g))
 
 default: build
 
-.PHONY : build test install-lint-deps lint go-test fmt fmtcheck verify-vendor verify
+.PHONY : build build-static test install-lint-deps lint go-test fmt fmtcheck verify-vendor verify
 
 build:
 	@$(GO) build .
+
+build-static:
+	@echo Building
+	docker build --tag $(IMAGE_TAG) .
+	docker run --rm -e USER_ID=$(USER_ID) -e USER_GROUP=$(USER_GROUP) -v $(PWD):/build/garm-provider-azure:z $(IMAGE_TAG) /build-static.sh
+	@echo Binaries are available in $(PWD)/bin
 
 test: verify go-test
 
