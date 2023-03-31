@@ -118,6 +118,12 @@ To this end, this provider supports the following extra specs schema:
         "extra_tags": {
             "type": "object",
             "description": "Extra tags that will get added to all VMs spawned in a pool."
+        },
+        "ssh_public_keys": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
         }
     }
 }
@@ -135,7 +141,10 @@ An example extra specs json would look like this:
     "disk_size_gb": 200,
     "extra_tags": {
         "my_custom_tag": "some value"
-    }
+    },
+    "ssh_public_keys": [
+        "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC2oT7j/+elHY9U2ibgk2R...."
+    ]
 }
 ```
 
