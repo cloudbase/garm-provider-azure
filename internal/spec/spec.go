@@ -337,7 +337,7 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 	if r.BootstrapParams.OSType == params.Linux {
 		properties.OSProfile.LinuxConfiguration = &armcompute.LinuxConfiguration{
 			// password is a 24 random string that is never disclosed to anyone.
-			DisablePasswordAuthentication: to.Ptr(false),
+			DisablePasswordAuthentication: to.Ptr(true),
 		}
 	}
 	return properties, nil
