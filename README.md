@@ -107,10 +107,6 @@ To this end, this provider supports the following extra specs schema:
                 }
             }
         },
-        "admin_username": {
-            "type": "string",
-            "description": "Admin username to use. Default is garm."
-        },
         "storage_account_type": {
             "type": "string",
             "description": "Azure storage account type. Default is Standard_LRS."
@@ -135,7 +131,6 @@ An example extra specs json would look like this:
     "open_inbound_ports": {
         "Tcp": [22, 80]
     },
-    "admin_username": "johnDoe",
     "storage_account_type": "Standard_LRS",
     "disk_size_gb": 200,
     "extra_tags": {

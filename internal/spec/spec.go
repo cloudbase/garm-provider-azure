@@ -20,7 +20,6 @@ import (
 )
 
 const (
-	defaultAdminName          = "garm"
 	defaultStorageAccountType = armcompute.StorageAccountTypesStandardLRS
 	windowsRunScriptTemplate  = "try { gc -Raw C:/AzureData/CustomData.bin | sc /run.ps1; /run.ps1 } finally { rm -Force -ErrorAction SilentlyContinue /run.ps1 }"
 
