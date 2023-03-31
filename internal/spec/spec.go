@@ -1,4 +1,4 @@
-package provider
+package spec
 
 import (
 	"encoding/base64"
@@ -12,6 +12,8 @@ import (
 	"github.com/cloudbase/garm/params"
 	"github.com/cloudbase/garm/util"
 	"github.com/google/go-github/v48/github"
+
+	providerUtil "github.com/cloudbase/garm-provider-azure/internal/util"
 )
 
 const (
@@ -95,7 +97,7 @@ func (e *extraSpecs) ensureValidExtraSpec() {
 	}
 }
 
-func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerID string) (*runnerSpec, error) {
+func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerID string) (*RunnerSpec, error) {
 	tools, err := util.GetTools(data.OSType, data.OSArch, data.Tools)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tools: %s", err)
@@ -106,7 +108,7 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 		return nil, fmt.Errorf("error loading extra specs: %w", err)
 	}
 
-	tags, err := tagsFromBootstrapParams(data, controllerID)
+	tags, err := providerUtil.TagsFromBootstrapParams(data, controllerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tags: %w", err)
 	}
@@ -115,7 +117,7 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 		tags[name] = to.Ptr(val)
 	}
 
-	spec := &runnerSpec{
+	spec := &RunnerSpec{
 		VMSize:             data.Flavor,
 		AllocatePublicIP:   extraSpecs.AllocatePublicIP,
 		OpenInboundPorts:   extraSpecs.OpenInboundPorts,
@@ -134,7 +136,7 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 	return spec, nil
 }
 
-type runnerSpec struct {
+type RunnerSpec struct {
 	VMSize             string
 	AllocatePublicIP   bool
 	AdminUsername      string
@@ -146,7 +148,7 @@ type runnerSpec struct {
 	Tags               map[string]*string
 }
 
-func (r runnerSpec) Validate() error {
+func (r RunnerSpec) Validate() error {
 	if r.VMSize == "" {
 		return fmt.Errorf("missing flavor")
 	}
@@ -173,18 +175,18 @@ func (r runnerSpec) Validate() error {
 	return nil
 }
 
-func (r runnerSpec) ImageDetails() (imageDetails, error) {
+func (r RunnerSpec) ImageDetails() (providerUtil.ImageDetails, error) {
 	if r.BootstrapParams.Image == "" {
-		return imageDetails{}, fmt.Errorf("no image specified in bootstrap params")
+		return providerUtil.ImageDetails{}, fmt.Errorf("no image specified in bootstrap params")
 	}
-	imgDetails, err := urnToImageDetails(r.BootstrapParams.Image)
+	imgDetails, err := providerUtil.URNToImageDetails(r.BootstrapParams.Image)
 	if err != nil {
-		return imageDetails{}, fmt.Errorf("failed to get image details: %w", err)
+		return providerUtil.ImageDetails{}, fmt.Errorf("failed to get image details: %w", err)
 	}
 	return imgDetails, nil
 }
 
-func (r runnerSpec) ComposeUserData() ([]byte, error) {
+func (r RunnerSpec) ComposeUserData() ([]byte, error) {
 	switch r.BootstrapParams.OSType {
 	case params.Linux, params.Windows:
 		udata, err := util.GetCloudConfig(r.BootstrapParams, r.Tools, r.BootstrapParams.Name)
@@ -196,7 +198,7 @@ func (r runnerSpec) ComposeUserData() ([]byte, error) {
 	return nil, fmt.Errorf("unsupported OS type for cloud config: %s", r.BootstrapParams.OSType)
 }
 
-func (r runnerSpec) SecurityRules() []*armnetwork.SecurityRule {
+func (r RunnerSpec) SecurityRules() []*armnetwork.SecurityRule {
 	if len(r.OpenInboundPorts) == 0 {
 		return nil
 	}
@@ -223,7 +225,7 @@ func (r runnerSpec) SecurityRules() []*armnetwork.SecurityRule {
 	return ret
 }
 
-func (r runnerSpec) GetVMExtension(location, extName string) (*armcompute.VirtualMachineExtension, error) {
+func (r RunnerSpec) GetVMExtension(location, extName string) (*armcompute.VirtualMachineExtension, error) {
 	switch r.BootstrapParams.OSType {
 	case params.Windows:
 		asBytes, err := util.UTF16EncodedByteArrayFromString(windowsRunScriptTemplate)
@@ -253,7 +255,7 @@ func (r runnerSpec) GetVMExtension(location, extName string) (*armcompute.Virtua
 	return nil, nil
 }
 
-func (r runnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.VirtualMachineProperties, error) {
+func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.VirtualMachineProperties, error) {
 	imgDetails, err := r.ImageDetails()
 	if err != nil {
 		return nil, fmt.Errorf("failed to getimage details: %w", err)

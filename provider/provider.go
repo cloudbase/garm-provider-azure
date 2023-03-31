@@ -6,17 +6,15 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/cloudbase/garm-provider-azure/config"
+	"github.com/cloudbase/garm-provider-azure/internal/client"
+	"github.com/cloudbase/garm-provider-azure/internal/spec"
+	"github.com/cloudbase/garm-provider-azure/internal/util"
 
 	"github.com/cloudbase/garm/params"
 	"github.com/cloudbase/garm/runner/providers/external/execution"
 )
 
 var _ execution.ExternalProvider = &azureProvider{}
-
-const (
-	controllerIDTagName = "garm_controller_id"
-	poolIDTagName       = "garm_pool_id"
-)
 
 func NewAzureProvider(configPath, controllerID string) (execution.ExternalProvider, error) {
 	conf, err := config.NewConfig(configPath)
@@ -27,7 +25,7 @@ func NewAzureProvider(configPath, controllerID string) (execution.ExternalProvid
 	if err != nil {
 		return nil, fmt.Errorf("failed to get credentials: %w", err)
 	}
-	azCli, err := newAzCLI(conf)
+	azCli, err := client.NewAzCLI(conf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get azure CLI: %w", err)
 	}
@@ -43,7 +41,7 @@ type azureProvider struct {
 	cfg          *config.Config
 	creds        azcore.TokenCredential
 	controllerID string
-	azCli        *azureCli
+	azCli        *client.AzureCli
 }
 
 // CreateInstance creates a new compute instance in the provider.
@@ -53,7 +51,7 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		return params.Instance{}, fmt.Errorf("invalid architecture %s (supported: %s)", bootstrapParams.OSArch, params.Amd64)
 	}
 
-	spec, err := GetRunnerSpecFromBootstrapParams(bootstrapParams, a.controllerID)
+	spec, err := spec.GetRunnerSpecFromBootstrapParams(bootstrapParams, a.controllerID)
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to generate spec: %w", err)
 	}
@@ -62,23 +60,23 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to get image details: %w", err)
 	}
-	_, err = a.azCli.createResourceGroup(ctx, spec.BootstrapParams.Name, spec.Tags)
+	_, err = a.azCli.CreateResourceGroup(ctx, spec.BootstrapParams.Name, spec.Tags)
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to create resource group: %w", err)
 	}
 
 	defer func() {
 		if err != nil {
-			a.azCli.deleteResourceGroup(ctx, spec.BootstrapParams.Name, true) //nolint
+			a.azCli.DeleteResourceGroup(ctx, spec.BootstrapParams.Name, true) //nolint
 		}
 	}()
 
-	_, err = a.azCli.createVirtualNetwork(ctx, spec.BootstrapParams.Name, "10.10.0.0/16")
+	_, err = a.azCli.CreateVirtualNetwork(ctx, spec.BootstrapParams.Name, "10.10.0.0/16")
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to create virtual network: %w", err)
 	}
 
-	subnet, err := a.azCli.createSubnet(ctx, spec.BootstrapParams.Name, "10.10.1.0/24")
+	subnet, err := a.azCli.CreateSubnet(ctx, spec.BootstrapParams.Name, "10.10.1.0/24")
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to create subnet: %w", err)
 	}
@@ -86,7 +84,7 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 	var pubIPID string
 	var pubIP string
 	if spec.AllocatePublicIP {
-		publicIP, err := a.azCli.createPublicIP(ctx, spec.BootstrapParams.Name)
+		publicIP, err := a.azCli.CreatePublicIP(ctx, spec.BootstrapParams.Name)
 		if err != nil {
 			return params.Instance{}, fmt.Errorf("failed to create public IP: %w", err)
 		}
@@ -96,17 +94,17 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		pubIPID = *publicIP.ID
 	}
 
-	nsg, err := a.azCli.createNetworkSecurityGroup(ctx, spec.BootstrapParams.Name, spec)
+	nsg, err := a.azCli.CreateNetworkSecurityGroup(ctx, spec.BootstrapParams.Name, spec)
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to create network security group: %w", err)
 	}
 
-	nic, err := a.azCli.createNetWorkInterface(ctx, spec.BootstrapParams.Name, *subnet.ID, *nsg.ID, pubIPID)
+	nic, err := a.azCli.CreateNetWorkInterface(ctx, spec.BootstrapParams.Name, *subnet.ID, *nsg.ID, pubIPID)
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to create NIC: %w", err)
 	}
 
-	if err := a.azCli.createVirtualMachine(ctx, spec, *nic.ID, spec.Tags); err != nil {
+	if err := a.azCli.CreateVirtualMachine(ctx, spec, *nic.ID, spec.Tags); err != nil {
 		return params.Instance{}, fmt.Errorf("failed to create VM: %w", err)
 	}
 
@@ -134,7 +132,7 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 
 // Delete instance will delete the instance in a provider.
 func (a *azureProvider) DeleteInstance(ctx context.Context, instance string) error {
-	err := a.azCli.deleteResourceGroup(ctx, instance, true)
+	err := a.azCli.DeleteResourceGroup(ctx, instance, true)
 	if err != nil {
 		return fmt.Errorf("failed to delete instance: %w", err)
 	}
@@ -143,11 +141,11 @@ func (a *azureProvider) DeleteInstance(ctx context.Context, instance string) err
 
 // GetInstance will return details about one instance.
 func (a *azureProvider) GetInstance(ctx context.Context, instance string) (params.Instance, error) {
-	vm, err := a.azCli.getInstance(ctx, instance, instance)
+	vm, err := a.azCli.GetInstance(ctx, instance, instance)
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to get VM details: %w", err)
 	}
-	details, err := azureInstanceToParamsInstance(vm)
+	details, err := util.AzureInstanceToParamsInstance(vm)
 	if err != nil {
 		return params.Instance{}, fmt.Errorf("failed to convert VM details: %w", err)
 	}
@@ -156,7 +154,7 @@ func (a *azureProvider) GetInstance(ctx context.Context, instance string) (param
 
 // ListInstances will list all instances for a provider.
 func (a *azureProvider) ListInstances(ctx context.Context, poolID string) ([]params.Instance, error) {
-	instances, err := a.azCli.listVirtualMachines(ctx, poolID)
+	instances, err := a.azCli.ListVirtualMachines(ctx, poolID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list instances: %w", err)
 	}
@@ -170,7 +168,7 @@ func (a *azureProvider) ListInstances(ctx context.Context, poolID string) ([]par
 		if val == nil {
 			return nil, fmt.Errorf("nil vm object in response")
 		}
-		details, err := azureInstanceToParamsInstance(*val)
+		details, err := util.AzureInstanceToParamsInstance(*val)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert VM details: %w", err)
 		}
@@ -186,10 +184,10 @@ func (a *azureProvider) RemoveAllInstances(ctx context.Context) error {
 
 // Stop shuts down the instance.
 func (a *azureProvider) Stop(ctx context.Context, instance string, force bool) error {
-	return a.azCli.dealocateVM(ctx, instance, instance)
+	return a.azCli.DealocateVM(ctx, instance, instance)
 }
 
 // Start boots up an instance.
 func (a *azureProvider) Start(ctx context.Context, instance string) error {
-	return a.azCli.startVM(ctx, instance)
+	return a.azCli.StartVM(ctx, instance)
 }

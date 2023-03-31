@@ -1,4 +1,4 @@
-package provider
+package client
 
 import (
 	"context"
@@ -13,9 +13,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 
 	"github.com/cloudbase/garm-provider-azure/config"
+	"github.com/cloudbase/garm-provider-azure/internal/spec"
+	"github.com/cloudbase/garm-provider-azure/internal/util"
 )
 
-func newAzCLI(cfg *config.Config) (*azureCli, error) {
+func NewAzCLI(cfg *config.Config) (*AzureCli, error) {
 	creds, err := cfg.Credentials.GetCredentials()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
@@ -62,7 +64,7 @@ func newAzCLI(cfg *config.Config) (*azureCli, error) {
 	if err != nil {
 		return nil, err
 	}
-	azCli := &azureCli{
+	azCli := &AzureCli{
 		cfg:       cfg,
 		cred:      creds,
 		rgCli:     resourceGroupClient,
@@ -78,7 +80,7 @@ func newAzCLI(cfg *config.Config) (*azureCli, error) {
 	return azCli, nil
 }
 
-type azureCli struct {
+type AzureCli struct {
 	cfg  *config.Config
 	cred azcore.TokenCredential
 
@@ -94,7 +96,7 @@ type azureCli struct {
 	location string
 }
 
-func (a *azureCli) createResourceGroup(ctx context.Context, name string, tags map[string]*string) (*armresources.ResourceGroup, error) {
+func (a *AzureCli) CreateResourceGroup(ctx context.Context, name string, tags map[string]*string) (*armresources.ResourceGroup, error) {
 	parameters := armresources.ResourceGroup{
 		Location: to.Ptr(a.location),
 		Tags:     tags,
@@ -108,7 +110,7 @@ func (a *azureCli) createResourceGroup(ctx context.Context, name string, tags ma
 	return &resp.ResourceGroup, nil
 }
 
-func (a *azureCli) createVirtualNetwork(ctx context.Context, baseName, spaceCIDR string) (*armnetwork.VirtualNetwork, error) {
+func (a *AzureCli) CreateVirtualNetwork(ctx context.Context, baseName, spaceCIDR string) (*armnetwork.VirtualNetwork, error) {
 	parameters := armnetwork.VirtualNetwork{
 		Location: to.Ptr(a.location),
 		Properties: &armnetwork.VirtualNetworkPropertiesFormat{
@@ -133,7 +135,7 @@ func (a *azureCli) createVirtualNetwork(ctx context.Context, baseName, spaceCIDR
 	return &resp.VirtualNetwork, nil
 }
 
-func (a *azureCli) createSubnet(ctx context.Context, baseName, subnetCIDR string) (*armnetwork.Subnet, error) {
+func (a *AzureCli) CreateSubnet(ctx context.Context, baseName, subnetCIDR string) (*armnetwork.Subnet, error) {
 	parameters := armnetwork.Subnet{
 		Properties: &armnetwork.SubnetPropertiesFormat{
 			AddressPrefix: to.Ptr(subnetCIDR),
@@ -153,7 +155,7 @@ func (a *azureCli) createSubnet(ctx context.Context, baseName, subnetCIDR string
 	return &resp.Subnet, nil
 }
 
-func (a *azureCli) createNetworkSecurityGroup(ctx context.Context, baseName string, spec *runnerSpec) (*armnetwork.SecurityGroup, error) {
+func (a *AzureCli) CreateNetworkSecurityGroup(ctx context.Context, baseName string, spec *spec.RunnerSpec) (*armnetwork.SecurityGroup, error) {
 	if spec == nil {
 		return nil, fmt.Errorf("invalid nil runner spec")
 	}
@@ -178,7 +180,7 @@ func (a *azureCli) createNetworkSecurityGroup(ctx context.Context, baseName stri
 	return &resp.SecurityGroup, nil
 }
 
-func (a *azureCli) createNetWorkInterface(ctx context.Context, baseName, subnetID, networkSecurityGroupID, publicIPID string) (*armnetwork.Interface, error) {
+func (a *AzureCli) CreateNetWorkInterface(ctx context.Context, baseName, subnetID, networkSecurityGroupID, publicIPID string) (*armnetwork.Interface, error) {
 	interfaceIPConfig := &armnetwork.InterfaceIPConfigurationPropertiesFormat{
 		PrivateIPAllocationMethod: to.Ptr(armnetwork.IPAllocationMethodDynamic),
 		Subnet: &armnetwork.Subnet{
@@ -220,7 +222,7 @@ func (a *azureCli) createNetWorkInterface(ctx context.Context, baseName, subnetI
 	return &resp.Interface, err
 }
 
-func (a *azureCli) createPublicIP(ctx context.Context, baseName string) (*armnetwork.PublicIPAddress, error) {
+func (a *AzureCli) CreatePublicIP(ctx context.Context, baseName string) (*armnetwork.PublicIPAddress, error) {
 	parameters := armnetwork.PublicIPAddress{
 		Location: to.Ptr(a.location),
 		Properties: &armnetwork.PublicIPAddressPropertiesFormat{
@@ -240,7 +242,7 @@ func (a *azureCli) createPublicIP(ctx context.Context, baseName string) (*armnet
 	return &resp.PublicIPAddress, err
 }
 
-func (a *azureCli) createVirtualMachine(ctx context.Context, spec *runnerSpec, networkInterfaceID string, tags map[string]*string) error {
+func (a *AzureCli) CreateVirtualMachine(ctx context.Context, spec *spec.RunnerSpec, networkInterfaceID string, tags map[string]*string) error {
 	if spec == nil {
 		return fmt.Errorf("invalid nil runner spec")
 	}
@@ -278,7 +280,7 @@ func (a *azureCli) createVirtualMachine(ctx context.Context, spec *runnerSpec, n
 	return nil
 }
 
-func (a *azureCli) deleteResourceGroup(ctx context.Context, resourceGroup string, forceDelete bool) error {
+func (a *AzureCli) DeleteResourceGroup(ctx context.Context, resourceGroup string, forceDelete bool) error {
 	opts := &armresources.ResourceGroupsClientBeginDeleteOptions{}
 	if forceDelete {
 		opts.ForceDeletionTypes = to.Ptr("forceDeletionTypes=Microsoft.Compute/virtualMachines")
@@ -293,7 +295,7 @@ func (a *azureCli) deleteResourceGroup(ctx context.Context, resourceGroup string
 			}
 			// We may not have a VM created yet, so force delete will fail. Retry without force delete.
 			if asRespCode.ErrorCode == "UnsupportedForceDeletionResourceTypeInQueryString" {
-				return a.deleteResourceGroup(ctx, resourceGroup, false)
+				return a.DeleteResourceGroup(ctx, resourceGroup, false)
 			}
 		}
 		return fmt.Errorf("failed to delete resource group: %w", err)
@@ -307,7 +309,7 @@ func (a *azureCli) deleteResourceGroup(ctx context.Context, resourceGroup string
 	return nil
 }
 
-func (a *azureCli) getInstance(ctx context.Context, rgName, vmName string) (armcompute.VirtualMachine, error) {
+func (a *AzureCli) GetInstance(ctx context.Context, rgName, vmName string) (armcompute.VirtualMachine, error) {
 	opts := &armcompute.VirtualMachinesClientGetOptions{
 		Expand: to.Ptr(armcompute.InstanceViewTypesInstanceView),
 	}
@@ -318,7 +320,7 @@ func (a *azureCli) getInstance(ctx context.Context, rgName, vmName string) (armc
 	return vm.VirtualMachine, nil
 }
 
-func (a *azureCli) dealocateVM(ctx context.Context, rgName, vmName string) error {
+func (a *AzureCli) DealocateVM(ctx context.Context, rgName, vmName string) error {
 	poller, err := a.vmCli.BeginDeallocate(ctx, rgName, vmName, nil)
 	if err != nil {
 		return fmt.Errorf("failed to dealocate VM: %w", err)
@@ -330,7 +332,7 @@ func (a *azureCli) dealocateVM(ctx context.Context, rgName, vmName string) error
 	return nil
 }
 
-func (a *azureCli) startVM(ctx context.Context, vmName string) error {
+func (a *AzureCli) StartVM(ctx context.Context, vmName string) error {
 	poller, err := a.vmCli.BeginStart(ctx, vmName, vmName, nil)
 	if err != nil {
 		return fmt.Errorf("failed to start VM: %w", err)
@@ -343,7 +345,7 @@ func (a *azureCli) startVM(ctx context.Context, vmName string) error {
 	return nil
 }
 
-func (a *azureCli) listVirtualMachines(ctx context.Context, poolID string) ([]*armcompute.VirtualMachine, error) {
+func (a *AzureCli) ListVirtualMachines(ctx context.Context, poolID string) ([]*armcompute.VirtualMachine, error) {
 	options := &armcompute.VirtualMachinesClientListAllOptions{}
 	var resp []*armcompute.VirtualMachine
 	pager := a.vmCli.NewListAllPager(options)
@@ -358,7 +360,7 @@ func (a *azureCli) listVirtualMachines(ctx context.Context, poolID string) ([]*a
 				if vm.Tags == nil {
 					continue
 				}
-				tag, ok := vm.Tags[poolIDTagName]
+				tag, ok := vm.Tags[util.PoolIDTagName]
 				if !ok || *tag != poolID {
 					continue
 				}

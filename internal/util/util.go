@@ -1,4 +1,4 @@
-package provider
+package util
 
 import (
 	"fmt"
@@ -9,6 +9,11 @@ import (
 
 	"github.com/cloudbase/garm/params"
 	"github.com/cloudbase/garm/runner/providers/common"
+)
+
+const (
+	ControllerIDTagName = "garm-controller-id"
+	PoolIDTagName       = "garm-pool-id"
 )
 
 var (
@@ -32,39 +37,39 @@ var (
 	}
 )
 
-func tagsFromBootstrapParams(bootstrapParams params.BootstrapInstance, controllerID string) (map[string]*string, error) {
-	imageDetails, err := urnToImageDetails(bootstrapParams.Image)
+func TagsFromBootstrapParams(bootstrapParams params.BootstrapInstance, controllerID string) (map[string]*string, error) {
+	ImageDetails, err := URNToImageDetails(bootstrapParams.Image)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse image: %w", err)
 	}
 
 	ret := map[string]*string{
 		"os_arch":           to.Ptr(string(bootstrapParams.OSArch)),
-		"os_version":        to.Ptr(imageDetails.Version),
-		"os_name":           to.Ptr(imageDetails.SKU),
+		"os_version":        to.Ptr(ImageDetails.Version),
+		"os_name":           to.Ptr(ImageDetails.SKU),
 		"os_type":           to.Ptr(string(bootstrapParams.OSType)),
-		poolIDTagName:       to.Ptr(bootstrapParams.PoolID),
-		controllerIDTagName: to.Ptr(controllerID),
+		PoolIDTagName:       to.Ptr(bootstrapParams.PoolID),
+		ControllerIDTagName: to.Ptr(controllerID),
 	}
 
 	return ret, nil
 }
 
-type imageDetails struct {
+type ImageDetails struct {
 	Offer     string
 	Publisher string
 	SKU       string
 	Version   string
 }
 
-func urnToImageDetails(urn string) (imageDetails, error) {
+func URNToImageDetails(urn string) (ImageDetails, error) {
 	// MicrosoftWindowsServer:WindowsServer:2022-Datacenter:latest
 	fields := strings.Split(urn, ":")
 	if len(fields) != 4 {
-		return imageDetails{}, fmt.Errorf("invalid image URN: %s", urn)
+		return ImageDetails{}, fmt.Errorf("invalid image URN: %s", urn)
 	}
 
-	return imageDetails{
+	return ImageDetails{
 		Publisher: fields[0],
 		Offer:     fields[1],
 		SKU:       fields[2],
@@ -72,7 +77,7 @@ func urnToImageDetails(urn string) (imageDetails, error) {
 	}, nil
 }
 
-func azurePowerStateToGarmPowerState(vm armcompute.VirtualMachine) string {
+func AzurePowerStateToGarmPowerState(vm armcompute.VirtualMachine) string {
 	if vm.Properties != nil && vm.Properties.InstanceView != nil && vm.Properties.InstanceView.Statuses != nil {
 		for _, val := range vm.Properties.InstanceView.Statuses {
 			if val.Code != nil {
@@ -93,7 +98,7 @@ func azurePowerStateToGarmPowerState(vm armcompute.VirtualMachine) string {
 	return "unknown"
 }
 
-func azureInstanceToParamsInstance(vm armcompute.VirtualMachine) (params.Instance, error) {
+func AzureInstanceToParamsInstance(vm armcompute.VirtualMachine) (params.Instance, error) {
 	if vm.Name == nil {
 		return params.Instance{}, fmt.Errorf("missing VM name")
 	}
@@ -120,6 +125,6 @@ func azureInstanceToParamsInstance(vm armcompute.VirtualMachine) (params.Instanc
 		OSArch:     params.OSArch(*os_arch),
 		OSName:     *os_name,
 		OSVersion:  *os_version,
-		Status:     common.InstanceStatus(azurePowerStateToGarmPowerState(vm)),
+		Status:     common.InstanceStatus(AzurePowerStateToGarmPowerState(vm)),
 	}, nil
 }
