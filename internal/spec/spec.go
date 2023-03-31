@@ -335,9 +335,24 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 	}
 
 	if r.BootstrapParams.OSType == params.Linux {
+		pubKeys := []*armcompute.SSHPublicKey{}
+		passwordAuth := true
+		if len(r.SSHPublicKeys) > 0 {
+			passwordAuth = false
+			for _, pubKey := range r.SSHPublicKeys {
+				pubKeys = append(pubKeys, &armcompute.SSHPublicKey{
+					KeyData: to.Ptr(pubKey),
+					Path:    to.Ptr("/home/runner/.ssh/authorized_keys2"),
+				})
+			}
+		}
+
 		properties.OSProfile.LinuxConfiguration = &armcompute.LinuxConfiguration{
 			// password is a 24 random string that is never disclosed to anyone.
-			DisablePasswordAuthentication: to.Ptr(true),
+			DisablePasswordAuthentication: to.Ptr(passwordAuth),
+			SSH: &armcompute.SSHConfiguration{
+				PublicKeys: pubKeys,
+			},
 		}
 	}
 	return properties, nil
