@@ -336,15 +336,29 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 
 	if r.BootstrapParams.OSType == params.Linux {
 		pubKeys := []*armcompute.SSHPublicKey{}
-		passwordAuth := true
+		fakeKey, err := providerUtil.GenerateFakeKey()
+		if err == nil {
+			pubKeys = append(pubKeys, &armcompute.SSHPublicKey{
+				KeyData: to.Ptr(fakeKey),
+				Path:    to.Ptr("/home/runner/.ssh/authorized_keys2"),
+			})
+		}
+
+		passwordAuth := false
 		if len(r.SSHPublicKeys) > 0 {
-			passwordAuth = false
 			for _, pubKey := range r.SSHPublicKeys {
 				pubKeys = append(pubKeys, &armcompute.SSHPublicKey{
 					KeyData: to.Ptr(pubKey),
 					Path:    to.Ptr("/home/runner/.ssh/authorized_keys2"),
 				})
 			}
+		}
+
+		if len(pubKeys) == 0 {
+			// last ditch effort. Enable password auth if we couldn't generate a fake
+			// public key, and no keys were added in extra_specs.
+			// Otherwise azure complains.
+			passwordAuth = true
 		}
 
 		properties.OSProfile.LinuxConfiguration = &armcompute.LinuxConfiguration{

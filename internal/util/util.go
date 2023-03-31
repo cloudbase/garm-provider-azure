@@ -1,11 +1,14 @@
 package util
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"fmt"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
+	"golang.org/x/crypto/ssh"
 
 	"github.com/cloudbase/garm/params"
 	"github.com/cloudbase/garm/runner/providers/common"
@@ -127,4 +130,19 @@ func AzureInstanceToParamsInstance(vm armcompute.VirtualMachine) (params.Instanc
 		OSVersion:  *os_version,
 		Status:     common.InstanceStatus(AzurePowerStateToGarmPowerState(vm)),
 	}, nil
+}
+
+// GenerateFakeKey generates a SSH key pair, returns the public key, and
+// discards the private key. This is useful for droplets that don't need a
+// public key, since DO & Azure insists on requiring one.
+func GenerateFakeKey() (string, error) {
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return "", err
+	}
+	sshKey, err := ssh.NewPublicKey(&rsaKey.PublicKey)
+	if err != nil {
+		return "", err
+	}
+	return string(ssh.MarshalAuthorizedKey(sshKey)), nil
 }
