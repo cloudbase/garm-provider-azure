@@ -12,6 +12,7 @@ import (
 	"github.com/cloudbase/garm/params"
 	"github.com/cloudbase/garm/util"
 	"github.com/google/go-github/v48/github"
+	"golang.org/x/crypto/ssh"
 
 	providerUtil "github.com/cloudbase/garm-provider-azure/internal/util"
 )
@@ -44,6 +45,7 @@ type extraSpecs struct {
 	StorageAccountType armcompute.StorageAccountTypes            `json:"storage_account_type"`
 	DiskSizeGB         int32                                     `json:"disk_size_gb"`
 	ExtraTags          map[string]string                         `json:"extra_tags"`
+	SSHPublicKeys      []string                                  `json:"ssh_public_keys"`
 }
 
 func (e *extraSpecs) cleanInboundPorts() {
@@ -124,6 +126,7 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 		AdminUsername:      extraSpecs.AdminUsername,
 		StorageAccountType: extraSpecs.StorageAccountType,
 		DiskSizeGB:         extraSpecs.DiskSizeGB,
+		SSHPublicKeys:      extraSpecs.SSHPublicKeys,
 		BootstrapParams:    data,
 		Tools:              tools,
 		Tags:               tags,
@@ -146,6 +149,7 @@ type RunnerSpec struct {
 	BootstrapParams    params.BootstrapInstance
 	Tools              github.RunnerApplicationDownload
 	Tags               map[string]*string
+	SSHPublicKeys      []string
 }
 
 func (r RunnerSpec) Validate() error {
@@ -172,6 +176,14 @@ func (r RunnerSpec) Validate() error {
 		return fmt.Errorf("invalid bootstrap params")
 	}
 
+	if len(r.SSHPublicKeys) > 0 {
+		for _, key := range r.SSHPublicKeys {
+			if _, _, _, _, err := ssh.ParseAuthorizedKey([]byte(key)); err != nil {
+				return fmt.Errorf("failed to validate public key %s", key)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -189,7 +201,11 @@ func (r RunnerSpec) ImageDetails() (providerUtil.ImageDetails, error) {
 func (r RunnerSpec) ComposeUserData() ([]byte, error) {
 	switch r.BootstrapParams.OSType {
 	case params.Linux, params.Windows:
-		udata, err := util.GetCloudConfig(r.BootstrapParams, r.Tools, r.BootstrapParams.Name)
+		bootstrapCopy := r.BootstrapParams
+		if len(r.SSHPublicKeys) > 0 {
+			bootstrapCopy.SSHKeys = append(bootstrapCopy.SSHKeys, r.SSHPublicKeys...)
+		}
+		udata, err := util.GetCloudConfig(bootstrapCopy, r.Tools, bootstrapCopy.Name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate userdata: %w", err)
 		}

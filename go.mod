@@ -11,6 +11,7 @@ require (
 	github.com/BurntSushi/toml v1.2.1
 	github.com/cloudbase/garm v0.0.0-20230328142628-4c906d5f5b4e
 	github.com/google/go-github/v48 v48.2.0
+	golang.org/x/crypto v0.7.0
 )
 
 require (
@@ -31,7 +32,6 @@ require (
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b // indirect
 	github.com/teris-io/shortid v0.0.0-20220617161101-71ec9f2aa569 // indirect
-	golang.org/x/crypto v0.7.0 // indirect
 	golang.org/x/net v0.8.0 // indirect
 	golang.org/x/oauth2 v0.6.0 // indirect
 	golang.org/x/sys v0.6.0 // indirect

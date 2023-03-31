@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/cloudbase/garm-provider-azure/internal/util"
 	"github.com/cloudbase/garm-provider-azure/provider"
 	"github.com/cloudbase/garm/runner/providers/external/execution"
 )
@@ -14,6 +15,8 @@ import (
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), signals...)
 	defer stop()
+
+	util.SetupLogging()
 
 	executionEnv, err := execution.GetEnvironment()
 	if err != nil {
