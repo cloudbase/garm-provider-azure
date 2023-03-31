@@ -201,11 +201,7 @@ func (r RunnerSpec) ImageDetails() (providerUtil.ImageDetails, error) {
 func (r RunnerSpec) ComposeUserData() ([]byte, error) {
 	switch r.BootstrapParams.OSType {
 	case params.Linux, params.Windows:
-		bootstrapCopy := r.BootstrapParams
-		if len(r.SSHPublicKeys) > 0 {
-			bootstrapCopy.SSHKeys = append(bootstrapCopy.SSHKeys, r.SSHPublicKeys...)
-		}
-		udata, err := util.GetCloudConfig(bootstrapCopy, r.Tools, bootstrapCopy.Name)
+		udata, err := util.GetCloudConfig(r.BootstrapParams, r.Tools, r.BootstrapParams.Name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate userdata: %w", err)
 		}
@@ -340,7 +336,7 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 		if err == nil {
 			pubKeys = append(pubKeys, &armcompute.SSHPublicKey{
 				KeyData: to.Ptr(fakeKey),
-				Path:    to.Ptr("/home/runner/.ssh/authorized_keys2"),
+				Path:    to.Ptr("/home/runner/.ssh/authorized_keys"),
 			})
 		}
 
@@ -349,7 +345,7 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 			for _, pubKey := range r.SSHPublicKeys {
 				pubKeys = append(pubKeys, &armcompute.SSHPublicKey{
 					KeyData: to.Ptr(pubKey),
-					Path:    to.Ptr("/home/runner/.ssh/authorized_keys2"),
+					Path:    to.Ptr("/home/runner/.ssh/authorized_keys"),
 				})
 			}
 		}
