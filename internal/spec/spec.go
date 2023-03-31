@@ -220,8 +220,9 @@ func (r RunnerSpec) SecurityRules() []*armnetwork.SecurityRule {
 	}
 
 	var ret []*armnetwork.SecurityRule
+	secGroupPrio := 200
 	for proto, ports := range r.OpenInboundPorts {
-		for _, port := range ports {
+		for idx, port := range ports {
 			ret = append(ret, &armnetwork.SecurityRule{
 				Name: to.Ptr(fmt.Sprintf("inbound_%s_%d", proto, port)),
 				Properties: &armnetwork.SecurityRulePropertiesFormat{
@@ -231,7 +232,7 @@ func (r RunnerSpec) SecurityRules() []*armnetwork.SecurityRule {
 					DestinationPortRange:     to.Ptr(strconv.Itoa(port)),
 					Protocol:                 to.Ptr(proto),
 					Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
-					Priority:                 to.Ptr[int32](100),
+					Priority:                 to.Ptr(int32(secGroupPrio + idx)),
 					Description:              to.Ptr(fmt.Sprintf("open inbound %s port %d", proto, port)),
 					Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
 				},
