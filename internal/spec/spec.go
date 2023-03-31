@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"path"
 	"strconv"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -11,6 +12,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/cloudbase/garm/params"
 	"github.com/cloudbase/garm/util"
+	"github.com/cloudbase/garm/util/appdefaults"
 	"github.com/google/go-github/v48/github"
 	"golang.org/x/crypto/ssh"
 
@@ -41,7 +43,6 @@ func newExtraSpecsFromBootstrapData(data params.BootstrapInstance) (*extraSpecs,
 type extraSpecs struct {
 	AllocatePublicIP   bool                                      `json:"allocate_public_ip"`
 	OpenInboundPorts   map[armnetwork.SecurityRuleProtocol][]int `json:"open_inbound_ports"`
-	AdminUsername      string                                    `json:"admin_username"`
 	StorageAccountType armcompute.StorageAccountTypes            `json:"storage_account_type"`
 	DiskSizeGB         int32                                     `json:"disk_size_gb"`
 	ExtraTags          map[string]string                         `json:"extra_tags"`
@@ -90,9 +91,6 @@ func (e *extraSpecs) ensureValidExtraSpec() {
 	if e.DiskSizeGB == 0 {
 		e.DiskSizeGB = defaultDiskSizeGB
 	}
-	if e.AdminUsername == "" {
-		e.AdminUsername = defaultAdminName
-	}
 
 	if e.ExtraTags == nil {
 		e.ExtraTags = map[string]string{}
@@ -123,7 +121,7 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 		VMSize:             data.Flavor,
 		AllocatePublicIP:   extraSpecs.AllocatePublicIP,
 		OpenInboundPorts:   extraSpecs.OpenInboundPorts,
-		AdminUsername:      extraSpecs.AdminUsername,
+		AdminUsername:      appdefaults.DefaultUser,
 		StorageAccountType: extraSpecs.StorageAccountType,
 		DiskSizeGB:         extraSpecs.DiskSizeGB,
 		SSHPublicKeys:      extraSpecs.SSHPublicKeys,
@@ -336,7 +334,7 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 		if err == nil {
 			pubKeys = append(pubKeys, &armcompute.SSHPublicKey{
 				KeyData: to.Ptr(fakeKey),
-				Path:    to.Ptr("/home/runner/.ssh/authorized_keys"),
+				Path:    to.Ptr(path.Join("/home", appdefaults.DefaultUser, ".ssh/authorized_keys")),
 			})
 		}
 
@@ -345,7 +343,7 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 			for _, pubKey := range r.SSHPublicKeys {
 				pubKeys = append(pubKeys, &armcompute.SSHPublicKey{
 					KeyData: to.Ptr(pubKey),
-					Path:    to.Ptr("/home/runner/.ssh/authorized_keys"),
+					Path:    to.Ptr(path.Join("/home", appdefaults.DefaultUser, ".ssh/authorized_keys")),
 				})
 			}
 		}
