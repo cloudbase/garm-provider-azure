@@ -121,6 +121,7 @@ To this end, this provider supports the following extra specs schema:
         },
         "ssh_public_keys": {
             "type": "array",
+            "description": "SSH public keys to add to the admin user on Linux runners.",
             "items": {
                 "type": "string"
             }
