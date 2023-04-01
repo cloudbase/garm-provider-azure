@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/cloudbase/garm-provider-azure/config"
 	"github.com/cloudbase/garm-provider-azure/internal/client"
 	"github.com/cloudbase/garm-provider-azure/internal/spec"
@@ -21,25 +20,17 @@ func NewAzureProvider(configPath, controllerID string) (execution.ExternalProvid
 	if err != nil {
 		return nil, fmt.Errorf("error loading config: %w", err)
 	}
-	creds, err := conf.Credentials.GetCredentials()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get credentials: %w", err)
-	}
 	azCli, err := client.NewAzCLI(conf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get azure CLI: %w", err)
 	}
 	return &azureProvider{
-		cfg:          conf,
-		creds:        creds,
 		controllerID: controllerID,
 		azCli:        azCli,
 	}, nil
 }
 
 type azureProvider struct {
-	cfg          *config.Config
-	creds        azcore.TokenCredential
 	controllerID string
 	azCli        *client.AzureCli
 }
