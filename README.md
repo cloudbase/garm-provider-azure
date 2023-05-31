@@ -98,6 +98,10 @@ To this end, this provider supports the following extra specs schema:
             "type": "boolean",
             "description": "Allocate a public IP to the VM."
         },
+        "confidential": {
+            "type": "boolean",
+            "description": "The selected virtual machine size is confidential."
+        },
         "open_inbound_ports": {
             "type": "object",
             "description": "A map of protocol to list of inbound ports to open.",
