@@ -60,6 +60,7 @@ type extraSpecs struct {
 	DiskSizeGB         int32                                     `json:"disk_size_gb"`
 	ExtraTags          map[string]string                         `json:"extra_tags"`
 	SSHPublicKeys      []string                                  `json:"ssh_public_keys"`
+	Confidential       bool                                      `json:"confidential"`
 }
 
 func (e *extraSpecs) cleanInboundPorts() {
@@ -141,6 +142,7 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 		BootstrapParams:    data,
 		Tools:              tools,
 		Tags:               tags,
+		Confidential:       extraSpecs.Confidential,
 	}
 
 	if err := spec.Validate(); err != nil {
@@ -161,6 +163,7 @@ type RunnerSpec struct {
 	Tools              github.RunnerApplicationDownload
 	Tags               map[string]*string
 	SSHPublicKeys      []string
+	Confidential       bool
 }
 
 func (r RunnerSpec) Validate() error {
@@ -304,6 +307,30 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 		return nil, fmt.Errorf("missing vm size parameter")
 	}
 
+	var managedDiskParams *armcompute.ManagedDiskParameters
+	var securityProfile *armcompute.SecurityProfile
+	if r.Confidential {
+		managedDiskParams = &armcompute.ManagedDiskParameters{
+			StorageAccountType: &r.StorageAccountType,
+			SecurityProfile: &armcompute.VMDiskSecurityProfile{
+				SecurityEncryptionType: to.Ptr(armcompute.SecurityEncryptionTypesVMGuestStateOnly),
+			},
+		}
+
+		securityProfile = &armcompute.SecurityProfile{
+			SecurityType: to.Ptr(armcompute.SecurityTypesConfidentialVM),
+			UefiSettings: &armcompute.UefiSettings{
+				SecureBootEnabled: to.Ptr(true),
+				VTpmEnabled:       to.Ptr(true),
+			},
+		}
+	} else {
+		managedDiskParams = &armcompute.ManagedDiskParameters{
+			StorageAccountType: &r.StorageAccountType,
+		}
+		securityProfile = nil
+	}
+
 	properties := &armcompute.VirtualMachineProperties{
 		StorageProfile: &armcompute.StorageProfile{
 			ImageReference: &armcompute.ImageReference{
@@ -316,10 +343,8 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 				Name:         to.Ptr(r.BootstrapParams.Name),
 				CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
 				Caching:      to.Ptr(armcompute.CachingTypesReadWrite),
-				ManagedDisk: &armcompute.ManagedDiskParameters{
-					StorageAccountType: &r.StorageAccountType,
-				},
-				DiskSizeGB: &r.DiskSizeGB,
+				ManagedDisk:  managedDiskParams,
+				DiskSizeGB:   &r.DiskSizeGB,
 			},
 		},
 		HardwareProfile: &armcompute.HardwareProfile{
@@ -339,6 +364,7 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 				},
 			},
 		},
+		SecurityProfile: securityProfile,
 	}
 
 	if r.BootstrapParams.OSType == params.Linux {
