@@ -297,7 +297,7 @@ func (a *AzureCli) CreateVirtualMachine(ctx context.Context, spec *spec.RunnerSp
 func (a *AzureCli) DeleteResourceGroup(ctx context.Context, resourceGroup string, forceDelete bool) error {
 	opts := &armresources.ResourceGroupsClientBeginDeleteOptions{}
 	if forceDelete {
-		opts.ForceDeletionTypes = to.Ptr("forceDeletionTypes=Microsoft.Compute/virtualMachines")
+		opts.ForceDeletionTypes = to.Ptr("Microsoft.Compute/virtualMachines,Microsoft.Compute/virtualMachineScaleSets")
 	}
 
 	pollerResponse, err := a.rgCli.BeginDelete(ctx, resourceGroup, opts)
