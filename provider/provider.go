@@ -23,8 +23,8 @@ import (
 	"github.com/cloudbase/garm-provider-azure/internal/spec"
 	"github.com/cloudbase/garm-provider-azure/internal/util"
 
-	"github.com/cloudbase/garm/params"
-	"github.com/cloudbase/garm/runner/providers/external/execution"
+	"github.com/cloudbase/garm-provider-common/execution"
+	"github.com/cloudbase/garm-provider-common/params"
 )
 
 var _ execution.ExternalProvider = &azureProvider{}
@@ -50,24 +50,24 @@ type azureProvider struct {
 }
 
 // CreateInstance creates a new compute instance in the provider.
-func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams params.BootstrapInstance) (params.Instance, error) {
+func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams params.BootstrapInstance) (params.ProviderInstance, error) {
 	if bootstrapParams.OSArch != params.Amd64 {
 		// x86_64 only for now. Azure does seem to support arm64, which we will look at at a later time.
-		return params.Instance{}, fmt.Errorf("invalid architecture %s (supported: %s)", bootstrapParams.OSArch, params.Amd64)
+		return params.ProviderInstance{}, fmt.Errorf("invalid architecture %s (supported: %s)", bootstrapParams.OSArch, params.Amd64)
 	}
 
 	spec, err := spec.GetRunnerSpecFromBootstrapParams(bootstrapParams, a.controllerID)
 	if err != nil {
-		return params.Instance{}, fmt.Errorf("failed to generate spec: %w", err)
+		return params.ProviderInstance{}, fmt.Errorf("failed to generate spec: %w", err)
 	}
 
 	imgDetails, err := spec.ImageDetails()
 	if err != nil {
-		return params.Instance{}, fmt.Errorf("failed to get image details: %w", err)
+		return params.ProviderInstance{}, fmt.Errorf("failed to get image details: %w", err)
 	}
 	_, err = a.azCli.CreateResourceGroup(ctx, spec.BootstrapParams.Name, spec.Tags)
 	if err != nil {
-		return params.Instance{}, fmt.Errorf("failed to create resource group: %w", err)
+		return params.ProviderInstance{}, fmt.Errorf("failed to create resource group: %w", err)
 	}
 
 	defer func() {
@@ -78,12 +78,12 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 
 	_, err = a.azCli.CreateVirtualNetwork(ctx, spec.BootstrapParams.Name, "10.10.0.0/16")
 	if err != nil {
-		return params.Instance{}, fmt.Errorf("failed to create virtual network: %w", err)
+		return params.ProviderInstance{}, fmt.Errorf("failed to create virtual network: %w", err)
 	}
 
 	subnet, err := a.azCli.CreateSubnet(ctx, spec.BootstrapParams.Name, "10.10.1.0/24")
 	if err != nil {
-		return params.Instance{}, fmt.Errorf("failed to create subnet: %w", err)
+		return params.ProviderInstance{}, fmt.Errorf("failed to create subnet: %w", err)
 	}
 
 	var pubIPID string
@@ -91,7 +91,7 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 	if spec.AllocatePublicIP {
 		publicIP, err := a.azCli.CreatePublicIP(ctx, spec.BootstrapParams.Name)
 		if err != nil {
-			return params.Instance{}, fmt.Errorf("failed to create public IP: %w", err)
+			return params.ProviderInstance{}, fmt.Errorf("failed to create public IP: %w", err)
 		}
 		if publicIP.Properties != nil && publicIP.Properties.IPAddress != nil {
 			pubIP = *publicIP.Properties.IPAddress
@@ -101,22 +101,22 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 
 	nsg, err := a.azCli.CreateNetworkSecurityGroup(ctx, spec.BootstrapParams.Name, spec)
 	if err != nil {
-		return params.Instance{}, fmt.Errorf("failed to create network security group: %w", err)
+		return params.ProviderInstance{}, fmt.Errorf("failed to create network security group: %w", err)
 	}
 
 	nic, err := a.azCli.CreateNetWorkInterface(ctx, spec.BootstrapParams.Name, *subnet.ID, *nsg.ID, pubIPID)
 	if err != nil {
-		return params.Instance{}, fmt.Errorf("failed to create NIC: %w", err)
+		return params.ProviderInstance{}, fmt.Errorf("failed to create NIC: %w", err)
 	}
 
 	if err := a.azCli.CreateVirtualMachine(ctx, spec, *nic.ID, spec.Tags); err != nil {
-		return params.Instance{}, fmt.Errorf("failed to create VM: %w", err)
+		return params.ProviderInstance{}, fmt.Errorf("failed to create VM: %w", err)
 	}
 
 	// We're lying here. It takes longer for the client to finish polling than for the VM to
 	// start running the userdata. Just return that the instance is running once the request
 	// to create it goes through.
-	instance := params.Instance{
+	instance := params.ProviderInstance{
 		ProviderID: spec.BootstrapParams.Name,
 		Name:       spec.BootstrapParams.Name,
 		OSType:     spec.BootstrapParams.OSType,
@@ -145,30 +145,30 @@ func (a *azureProvider) DeleteInstance(ctx context.Context, instance string) err
 }
 
 // GetInstance will return details about one instance.
-func (a *azureProvider) GetInstance(ctx context.Context, instance string) (params.Instance, error) {
+func (a *azureProvider) GetInstance(ctx context.Context, instance string) (params.ProviderInstance, error) {
 	vm, err := a.azCli.GetInstance(ctx, instance, instance)
 	if err != nil {
-		return params.Instance{}, fmt.Errorf("failed to get VM details: %w", err)
+		return params.ProviderInstance{}, fmt.Errorf("failed to get VM details: %w", err)
 	}
 	details, err := util.AzureInstanceToParamsInstance(vm)
 	if err != nil {
-		return params.Instance{}, fmt.Errorf("failed to convert VM details: %w", err)
+		return params.ProviderInstance{}, fmt.Errorf("failed to convert VM details: %w", err)
 	}
 	return details, nil
 }
 
 // ListInstances will list all instances for a provider.
-func (a *azureProvider) ListInstances(ctx context.Context, poolID string) ([]params.Instance, error) {
+func (a *azureProvider) ListInstances(ctx context.Context, poolID string) ([]params.ProviderInstance, error) {
 	instances, err := a.azCli.ListVirtualMachines(ctx, poolID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list instances: %w", err)
 	}
 
 	if instances == nil {
-		return []params.Instance{}, nil
+		return []params.ProviderInstance{}, nil
 	}
 
-	resp := make([]params.Instance, len(instances))
+	resp := make([]params.ProviderInstance, len(instances))
 	for idx, val := range instances {
 		if val == nil {
 			return nil, fmt.Errorf("nil vm object in response")

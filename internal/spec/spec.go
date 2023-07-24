@@ -24,10 +24,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
-	"github.com/cloudbase/garm/params"
-	"github.com/cloudbase/garm/util"
-	"github.com/cloudbase/garm/util/appdefaults"
-	"github.com/google/go-github/v48/github"
+	"github.com/cloudbase/garm-provider-common/cloudconfig"
+	appdefaults "github.com/cloudbase/garm-provider-common/defaults"
+	"github.com/cloudbase/garm-provider-common/params"
+	"github.com/cloudbase/garm-provider-common/util"
+	"github.com/google/go-github/v53/github"
 	"golang.org/x/crypto/ssh"
 
 	providerUtil "github.com/cloudbase/garm-provider-azure/internal/util"
@@ -215,7 +216,7 @@ func (r RunnerSpec) ImageDetails() (providerUtil.ImageDetails, error) {
 func (r RunnerSpec) ComposeUserData() ([]byte, error) {
 	switch r.BootstrapParams.OSType {
 	case params.Linux, params.Windows:
-		udata, err := util.GetCloudConfig(r.BootstrapParams, r.Tools, r.BootstrapParams.Name)
+		udata, err := cloudconfig.GetCloudConfig(r.BootstrapParams, r.Tools, r.BootstrapParams.Name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate userdata: %w", err)
 		}

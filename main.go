@@ -24,7 +24,7 @@ import (
 
 	"github.com/cloudbase/garm-provider-azure/internal/util"
 	"github.com/cloudbase/garm-provider-azure/provider"
-	"github.com/cloudbase/garm/runner/providers/external/execution"
+	"github.com/cloudbase/garm-provider-common/execution"
 )
 
 var signals = []os.Signal{
