@@ -24,8 +24,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/cloudbase/garm/params"
-	"github.com/cloudbase/garm/runner/providers/common"
+	"github.com/cloudbase/garm-provider-common/params"
 )
 
 const (
@@ -115,34 +114,34 @@ func AzurePowerStateToGarmPowerState(vm armcompute.VirtualMachine) string {
 	return "unknown"
 }
 
-func AzureInstanceToParamsInstance(vm armcompute.VirtualMachine) (params.Instance, error) {
+func AzureInstanceToParamsInstance(vm armcompute.VirtualMachine) (params.ProviderInstance, error) {
 	if vm.Name == nil {
-		return params.Instance{}, fmt.Errorf("missing VM name")
+		return params.ProviderInstance{}, fmt.Errorf("missing VM name")
 	}
 	os_type, ok := vm.Tags["os_type"]
 	if !ok {
-		return params.Instance{}, fmt.Errorf("missing os_type tag in VM")
+		return params.ProviderInstance{}, fmt.Errorf("missing os_type tag in VM")
 	}
 	os_arch, ok := vm.Tags["os_arch"]
 	if !ok {
-		return params.Instance{}, fmt.Errorf("missing os_arch tag in VM")
+		return params.ProviderInstance{}, fmt.Errorf("missing os_arch tag in VM")
 	}
 	os_version, ok := vm.Tags["os_version"]
 	if !ok {
-		return params.Instance{}, fmt.Errorf("missing os_version tag in VM")
+		return params.ProviderInstance{}, fmt.Errorf("missing os_version tag in VM")
 	}
 	os_name, ok := vm.Tags["os_name"]
 	if !ok {
-		return params.Instance{}, fmt.Errorf("missing os_name tag in VM")
+		return params.ProviderInstance{}, fmt.Errorf("missing os_name tag in VM")
 	}
-	return params.Instance{
+	return params.ProviderInstance{
 		ProviderID: *vm.Name,
 		Name:       *vm.Name,
 		OSType:     params.OSType(*os_type),
 		OSArch:     params.OSArch(*os_arch),
 		OSName:     *os_name,
 		OSVersion:  *os_version,
-		Status:     common.InstanceStatus(AzurePowerStateToGarmPowerState(vm)),
+		Status:     params.InstanceStatus(AzurePowerStateToGarmPowerState(vm)),
 	}, nil
 }
 
