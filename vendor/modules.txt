@@ -82,7 +82,7 @@ github.com/ProtonMail/go-crypto/openpgp/internal/ecc
 github.com/ProtonMail/go-crypto/openpgp/internal/encoding
 github.com/ProtonMail/go-crypto/openpgp/packet
 github.com/ProtonMail/go-crypto/openpgp/s2k
-# github.com/cloudbase/garm-provider-common v0.0.0-20230822153955-887987ac3307
+# github.com/cloudbase/garm-provider-common v0.0.0-20230823224722-2b9d66c6197b
 ## explicit; go 1.20
 github.com/cloudbase/garm-provider-common/cloudconfig
 github.com/cloudbase/garm-provider-common/defaults

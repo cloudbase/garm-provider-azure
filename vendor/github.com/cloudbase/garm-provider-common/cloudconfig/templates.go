@@ -306,9 +306,9 @@ function Import-Certificate() {
 	param (
 		[parameter(Mandatory=$true)]
 		[string]$CertificatePath,
-		[parameter(Mandatory=$true)]
+		[parameter(Mandatory=$false)]
 		[System.Security.Cryptography.X509Certificates.StoreLocation]$StoreLocation="LocalMachine",
-		[parameter(Mandatory=$true)]
+		[parameter(Mandatory=$false)]
 		[System.Security.Cryptography.X509Certificates.StoreName]$StoreName="TrustedPublisher"
 	)
 	PROCESS
@@ -404,7 +404,6 @@ function Install-Runner() {
 		Throw "missing callback authentication token"
 	}
 	try {
-		net user administrator P@ssw0rd /active:yes
 		$MetadataURL="{{.MetadataURL}}"
 		$DownloadURL="{{.DownloadURL}}"
 		if($MetadataURL -eq ""){
@@ -413,7 +412,7 @@ function Install-Runner() {
 
 		if($PEMData.Trim().Length -gt 0){
 			Set-Content $env:TMP\garm-ca.pem $PEMData
-			Import-Certificate -CertificatePath $env:TMP\garm-ca.pem
+			Import-Certificate -CertificatePath $env:TMP\garm-ca.pem -StoreName Root -StoreLocation LocalMachine
 		}
 
 		Update-GarmStatus -CallbackURL $CallbackURL -Message "downloading tools from $DownloadURL"
