@@ -305,7 +305,7 @@ function Import-Certificate() {
 	[CmdletBinding()]
 	param (
 		[parameter(Mandatory=$true)]
-		[string]$CertificatePath,
+		$CertificateData,
 		[parameter(Mandatory=$false)]
 		[System.Security.Cryptography.X509Certificates.StoreLocation]$StoreLocation="LocalMachine",
 		[parameter(Mandatory=$false)]
@@ -316,8 +316,7 @@ function Import-Certificate() {
 		$store = New-Object System.Security.Cryptography.X509Certificates.X509Store(
 			$StoreName, $StoreLocation)
 		$store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-		$cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
-			$CertificatePath)
+		$cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificateData)
 		$store.Add($cert)
 	}
 }
@@ -389,9 +388,6 @@ function Invoke-GarmFailure() {
 	}
 }
 
-$PEMData = @"
-{{.CABundle}}
-"@
 $GHRunnerGroup = "{{.GitHubRunnerGroup}}"
 
 function Install-Runner() {
@@ -410,9 +406,11 @@ function Install-Runner() {
 			Throw "missing metadata URL"
 		}
 
-		if($PEMData.Trim().Length -gt 0){
-			Set-Content $env:TMP\garm-ca.pem $PEMData
-			Import-Certificate -CertificatePath $env:TMP\garm-ca.pem -StoreName Root -StoreLocation LocalMachine
+		$bundle = wget -UseBasicParsing -Headers @{"Accept"="application/json"; "Authorization"="Bearer $Token"} -Uri $MetadataURL/system/cert-bundle
+		$converted = ConvertFrom-Json $bundle
+		foreach ($i in $converted.root_certificates.psobject.Properties){
+			$data = [System.Convert]::FromBase64String($i.Value)
+			Import-Certificate -CertificateData $data -StoreName Root -StoreLocation LocalMachine
 		}
 
 		Update-GarmStatus -CallbackURL $CallbackURL -Message "downloading tools from $DownloadURL"
@@ -451,10 +449,11 @@ function Install-Runner() {
 		$protectedBytes = [Security.Cryptography.ProtectedData]::Protect( $encodedBytes, $null, [Security.Cryptography.DataProtectionScope]::LocalMachine )
 		[System.IO.File]::WriteAllBytes((Join-Path $runnerDir ".credentials_rsaparams"), $protectedBytes)
 
-		wget -UseBasicParsing -Headers @{"Accept"="application/json"; "Authorization"="Bearer $Token"} -Uri $MetadataURL/system/service-name -OutFile "C:\runner\.service"
+		$serviceNameFile = (Join-Path $runnerDir ".service")
+		wget -UseBasicParsing -Headers @{"Accept"="application/json"; "Authorization"="Bearer $Token"} -Uri $MetadataURL/system/service-name -OutFile $serviceNameFile
 
 		Update-GarmStatus -CallbackURL $CallbackURL -Message "Creating system service"
-		$SVC_NAME=(gc -raw "C:\runner\.service")
+		$SVC_NAME=(gc -raw $serviceNameFile)
 		New-Service -Name "$SVC_NAME" -BinaryPathName "C:\runner\bin\RunnerService.exe" -DisplayName "$SVC_NAME" -Description "GitHub Actions Runner ($SVC_NAME)" -StartupType Automatic
 		Start-Service "$SVC_NAME"
 		Update-GarmStatus -Message "runner successfully installed" -CallbackURL $CallbackURL -Status "idle" | Out-Null
