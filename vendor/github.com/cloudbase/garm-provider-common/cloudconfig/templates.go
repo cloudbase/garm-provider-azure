@@ -111,16 +111,6 @@ function downloadAndExtractRunner() {
 	# chown {{ .RunnerUsername }}:{{ .RunnerGroup }} -R /home/{{ .RunnerUsername }}/actions-runner/ || fail "failed to change owner"
 }
 
-{{- if not .UseJITConfig }}
-GH_RUNNER_GROUP="{{.GitHubRunnerGroup}}"
-# $RUNNER_GROUP_OPT will be added to the config.sh line. If it's empty, nothing happens
-# if it holds a value, it will be part of the command.
-RUNNER_GROUP_OPT=""
-if [ ! -z $GH_RUNNER_GROUP ];then
-	RUNNER_GROUP_OPT="--runnergroup=$GH_RUNNER_GROUP"
-fi
-{{- end }}
-
 CACHED_RUNNER=$(getCachedToolsPath)
 if [ -z "$CACHED_RUNNER" ];then
 	downloadAndExtractRunner
@@ -171,7 +161,11 @@ set +e
 attempt=1
 while true; do
 	ERROUT=$(mktemp)
-	./config.sh --unattended --url "{{ .RepoURL }}" --token "$GITHUB_TOKEN" $RUNNER_GROUP_OPT --name "{{ .RunnerName }}" --labels "{{ .RunnerLabels }}" --ephemeral 2>$ERROUT
+	{{- if .GitHubRunnerGroup }}
+	./config.sh --unattended --url "{{ .RepoURL }}" --token "$GITHUB_TOKEN" --runnergroup {{.GitHubRunnerGroup}} --name "{{ .RunnerName }}" --labels "{{ .RunnerLabels }}" --ephemeral 2>$ERROUT
+	{{- else}}
+	./config.sh --unattended --url "{{ .RepoURL }}" --token "$GITHUB_TOKEN" --name "{{ .RunnerName }}" --labels "{{ .RunnerLabels }}" --ephemeral 2>$ERROUT
+	{{- end}}
 	if [ $? -eq 0 ]; then
 		rm $ERROUT || true
 		sendStatus "runner successfully configured after $attempt attempt(s)"
@@ -431,10 +425,7 @@ function Install-Runner() {
 		Update-GarmStatus -CallbackURL $CallbackURL -Message "extracting runner"
 		Add-Type -AssemblyName System.IO.Compression.FileSystem
 		[System.IO.Compression.ZipFile]::ExtractToDirectory($downloadPath, "$runnerDir")
-		$runnerGroupOpt = ""
-		if ($GHRunnerGroup.Length -gt 0){
-			$runnerGroupOpt = "--runnergroup $GHRunnerGroup"
-		}
+
 		Update-GarmStatus -CallbackURL $CallbackURL -Message "configuring and starting runner"
 		cd $runnerDir
 
@@ -460,7 +451,11 @@ function Install-Runner() {
 
 		{{- else }}
 		$GithubRegistrationToken = Invoke-WebRequest -UseBasicParsing -Headers @{"Accept"="application/json"; "Authorization"="Bearer $Token"} -Uri $MetadataURL/runner-registration-token/
-		./config.cmd --unattended --url "{{ .RepoURL }}" --token $GithubRegistrationToken $runnerGroupOpt --name "{{ .RunnerName }}" --labels "{{ .RunnerLabels }}" --ephemeral --runasservice
+		{{- if .GitHubRunnerGroup }}
+		./config.cmd --unattended --url "{{ .RepoURL }}" --token $GithubRegistrationToken --runnergroup {{.GitHubRunnerGroup}} --name "{{ .RunnerName }}" --labels "{{ .RunnerLabels }}" --ephemeral --runasservice
+		{{- else}}
+		./config.cmd --unattended --url "{{ .RepoURL }}" --token $GithubRegistrationToken --name "{{ .RunnerName }}" --labels "{{ .RunnerLabels }}" --ephemeral --runasservice
+		{{- end}}
 
 		$agentInfoFile = Join-Path $runnerDir ".runner"
 		$agentInfo = ConvertFrom-Json (gc -raw $agentInfoFile)
