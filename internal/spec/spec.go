@@ -28,7 +28,7 @@ import (
 	appdefaults "github.com/cloudbase/garm-provider-common/defaults"
 	"github.com/cloudbase/garm-provider-common/params"
 	"github.com/cloudbase/garm-provider-common/util"
-	"github.com/google/go-github/v54/github"
+	"github.com/google/go-github/v55/github"
 	"golang.org/x/crypto/ssh"
 
 	providerUtil "github.com/cloudbase/garm-provider-azure/internal/util"
