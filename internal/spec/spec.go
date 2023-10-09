@@ -28,7 +28,6 @@ import (
 	appdefaults "github.com/cloudbase/garm-provider-common/defaults"
 	"github.com/cloudbase/garm-provider-common/params"
 	"github.com/cloudbase/garm-provider-common/util"
-	"github.com/google/go-github/v55/github"
 	"golang.org/x/crypto/ssh"
 
 	providerUtil "github.com/cloudbase/garm-provider-azure/internal/util"
@@ -161,7 +160,7 @@ type RunnerSpec struct {
 	DiskSizeGB         int32
 	OpenInboundPorts   map[armnetwork.SecurityRuleProtocol][]int
 	BootstrapParams    params.BootstrapInstance
-	Tools              github.RunnerApplicationDownload
+	Tools              params.RunnerApplicationDownload
 	Tags               map[string]*string
 	SSHPublicKeys      []string
 	Confidential       bool
