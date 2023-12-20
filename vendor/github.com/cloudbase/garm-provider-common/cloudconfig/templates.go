@@ -43,7 +43,7 @@ fi
 
 function call() {
 	PAYLOAD="$1"
-	[[ $CALLBACK_URL =~ ^(.*)/status$ ]] || CALLBACK_URL="${CALLBACK_URL}/status"
+	[[ $CALLBACK_URL =~ ^(.*)/status(/)?$ ]] || CALLBACK_URL="${CALLBACK_URL}/status"
 	curl --retry 5 --retry-delay 5 --retry-connrefused --fail -s -X POST -d "${PAYLOAD}" -H 'Accept: application/json' -H "Authorization: Bearer ${BEARER_TOKEN}" "${CALLBACK_URL}" || echo "failed to call home: exit code ($?)"
 }
 
@@ -386,7 +386,7 @@ $GHRunnerGroup = "{{.GitHubRunnerGroup}}"
 
 function Install-Runner() {
 	$CallbackURL="{{.CallbackURL}}"
-	if (!$CallbackURL.EndsWith("/status")) {
+	if (!($CallbackURL -match "^(.*)/status(/)?$")) {
 		$CallbackURL = "$CallbackURL/status"
 	}
 
