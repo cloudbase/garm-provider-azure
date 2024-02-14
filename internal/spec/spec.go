@@ -44,6 +44,22 @@ const (
 	defaultEphemeralDiskPlacement string = "ResourceDisk"
 )
 
+type VMSizeEphemeralDiskSizeLimits struct {
+	ResourceDiskSizeGB int32
+	CacheDiskSizeGB    int32
+}
+
+func (v VMSizeEphemeralDiskSizeLimits) EphemeralSettings() (int32, *armcompute.DiffDiskPlacement, error) {
+	if v.CacheDiskSizeGB > 0 {
+		return v.CacheDiskSizeGB, to.Ptr(armcompute.DiffDiskPlacementCacheDisk), nil
+	}
+	if v.ResourceDiskSizeGB > 0 {
+		return v.ResourceDiskSizeGB, to.Ptr(armcompute.DiffDiskPlacementResourceDisk), nil
+
+	}
+	return 0, nil, fmt.Errorf("invalid ephemeral disk size limits")
+}
+
 func newExtraSpecsFromBootstrapData(data params.BootstrapInstance) (*extraSpecs, error) {
 	spec := &extraSpecs{}
 
@@ -321,14 +337,14 @@ func (r RunnerSpec) GetVMExtension(location, extName string) (*armcompute.Virtua
 	return nil, nil
 }
 
-func (r RunnerSpec) ephemeralDiskSettings() *armcompute.DiffDiskSettings {
+func (r RunnerSpec) ephemeralDiskSettings(placement *armcompute.DiffDiskPlacement) *armcompute.DiffDiskSettings {
 	if !r.UseEphemeralStorage {
 		return nil
 	}
 
 	return &armcompute.DiffDiskSettings{
 		Option:    to.Ptr(armcompute.DiffDiskOptionsLocal),
-		Placement: to.Ptr(armcompute.DiffDiskPlacementCacheDisk),
+		Placement: placement,
 	}
 }
 
@@ -366,7 +382,7 @@ func (r RunnerSpec) securityProfile() *armcompute.SecurityProfile {
 	return securityProfile
 }
 
-func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string, cacheSize int32) (*armcompute.VirtualMachineProperties, error) {
+func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string, sizeSpec VMSizeEphemeralDiskSizeLimits) (*armcompute.VirtualMachineProperties, error) {
 	imgDetails, err := r.ImageDetails()
 	if err != nil {
 		return nil, fmt.Errorf("failed to getimage details: %w", err)
@@ -392,14 +408,29 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string, cacheSize int3
 	}
 
 	managedDiskParams := r.managedDiskSettings()
-	diffSettings := r.ephemeralDiskSettings()
 	securityProfile := r.securityProfile()
 	cacheType := to.Ptr(armcompute.CachingTypesReadWrite)
 	diskSize := r.DiskSizeGB
+	var diffSettings *armcompute.DiffDiskSettings
+
 	if r.UseEphemeralStorage {
+		size, placement, err := sizeSpec.EphemeralSettings()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get ephemeral settings: %w", err)
+		}
+		diffSettings = r.ephemeralDiskSettings(placement)
 		cacheType = to.Ptr(armcompute.CachingTypesReadOnly)
-		diskSize = cacheSize
+		diskSize = size
+
+		// If confidential VMs are used with ephemeral storage, 1 GB is reserved.
+		// See: https://learn.microsoft.com/en-us/azure/virtual-machines/ephemeral-os-disks#confidential-vms-using-ephemeral-os-disks
+		// However, we disable confidential VMs for now, when ephemeral storage is used. We'll leave this recalculation of available
+		// space, in case we enable it in the future.
+		if r.Confidential {
+			diskSize = diskSize - 1
+		}
 	}
+
 	properties := &armcompute.VirtualMachineProperties{
 		StorageProfile: &armcompute.StorageProfile{
 			ImageReference: &armcompute.ImageReference{

@@ -265,18 +265,18 @@ func (a *AzureCli) CreatePublicIP(ctx context.Context, baseName string) (*armnet
 	return &resp.PublicIPAddress, err
 }
 
-func (a *AzureCli) CreateVirtualMachine(ctx context.Context, spec *spec.RunnerSpec, networkInterfaceID string, tags map[string]*string, cacheSize int32) error {
+func (a *AzureCli) CreateVirtualMachine(ctx context.Context, spec *spec.RunnerSpec, networkInterfaceID string, sizeSpec spec.VMSizeEphemeralDiskSizeLimits) error {
 	if spec == nil {
 		return fmt.Errorf("invalid nil runner spec")
 	}
 
-	properties, err := spec.GetNewVMProperties(networkInterfaceID, cacheSize)
+	properties, err := spec.GetNewVMProperties(networkInterfaceID, sizeSpec)
 	if err != nil {
 		return fmt.Errorf("failed to get new VM properties: %w", err)
 	}
 	parameters := armcompute.VirtualMachine{
 		Location: to.Ptr(a.location),
-		Tags:     tags,
+		Tags:     spec.Tags,
 		Identity: &armcompute.VirtualMachineIdentity{
 			Type: to.Ptr(armcompute.ResourceIdentityTypeNone),
 		},
@@ -304,7 +304,7 @@ func (a *AzureCli) CreateVirtualMachine(ctx context.Context, spec *spec.RunnerSp
 	return nil
 }
 
-func (a *AzureCli) GetMaxEphemeralDiskSize(ctx context.Context, vmSize string) (int32, error) {
+func (a *AzureCli) GetMaxEphemeralDiskSize(ctx context.Context, vmSize string) (spec.VMSizeEphemeralDiskSizeLimits, error) {
 	opts := &armcompute.ResourceSKUsClientListOptions{
 		Filter: to.Ptr(fmt.Sprintf("location eq '%s'", a.location)),
 	}
@@ -312,34 +312,52 @@ func (a *AzureCli) GetMaxEphemeralDiskSize(ctx context.Context, vmSize string) (
 	for pager.More() {
 		resp, err := pager.NextPage(ctx)
 		if err != nil {
-			return 0, fmt.Errorf("failed to get VM size details: %w", err)
+			return spec.VMSizeEphemeralDiskSizeLimits{}, fmt.Errorf("failed to get VM size details: %w", err)
 		}
 		if resp.ResourceSKUsResult.Value != nil {
 			for _, val := range resp.ResourceSKUsResult.Value {
 				if *val.ResourceType == "virtualMachines" && *val.Name == vmSize {
 					var ephemeralSupported string
 					var cacheBytes string
+					var resourceDiskMB string
 					for _, capability := range val.Capabilities {
 						switch *capability.Name {
 						case "EphemeralOSDiskSupported":
 							ephemeralSupported = *capability.Value
 						case "CachedDiskBytes":
 							cacheBytes = *capability.Value
+						case "MaxResourceVolumeMB":
+							resourceDiskMB = *capability.Value
 						}
 					}
-					if ephemeralSupported == "True" && cacheBytes != "" {
-						asInt64, err := strconv.ParseInt(cacheBytes, 10, 64)
-						if err != nil {
-							return 0, fmt.Errorf("failed to parse cache bytes: %w", err)
+					var res spec.VMSizeEphemeralDiskSizeLimits
+					if ephemeralSupported == "True" {
+						if cacheBytes != "" {
+							asInt64, err := strconv.ParseInt(cacheBytes, 10, 64)
+							if err != nil {
+								return spec.VMSizeEphemeralDiskSizeLimits{}, fmt.Errorf("failed to parse cache bytes: %w", err)
+							}
+							inGB := asInt64 / 1024 / 1024 / 1024
+							res.CacheDiskSizeGB = int32(inGB)
 						}
-						inGB := asInt64 / 1024 / 1024 / 1024
-						return int32(inGB), nil
+
+						if resourceDiskMB != "" {
+							asInt64, err := strconv.ParseInt(resourceDiskMB, 10, 64)
+							if err != nil {
+								return spec.VMSizeEphemeralDiskSizeLimits{}, fmt.Errorf("failed to parse resource disk MB: %w", err)
+							}
+							inGB := asInt64 / 1024
+							res.ResourceDiskSizeGB = int32(inGB)
+						}
+						if res.CacheDiskSizeGB != 0 || res.ResourceDiskSizeGB != 0 {
+							return res, nil
+						}
 					}
 				}
 			}
 		}
 	}
-	return 0, fmt.Errorf("failed to get VM size details for %s", vmSize)
+	return spec.VMSizeEphemeralDiskSizeLimits{}, fmt.Errorf("failed to get VM size details for %s", vmSize)
 }
 
 func (a *AzureCli) DeleteResourceGroup(ctx context.Context, resourceGroup string, forceDelete bool) error {
