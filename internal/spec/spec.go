@@ -421,7 +421,7 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string, sizeSpec VMSiz
 		diffSettings = r.ephemeralDiskSettings(placement)
 		cacheType = to.Ptr(armcompute.CachingTypesReadOnly)
 
-		if diskSize >= size {
+		if diskSize == 0 || diskSize >= size {
 			diskSize = size
 			// If confidential VMs are used with ephemeral storage, 1 GB is reserved.
 			// See: https://learn.microsoft.com/en-us/azure/virtual-machines/ephemeral-os-disks#confidential-vms-using-ephemeral-os-disks
