@@ -21,7 +21,6 @@ import (
 	"net"
 	"path"
 	"strconv"
-	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
@@ -262,12 +261,6 @@ func (r RunnerSpec) ImageDetails() (providerUtil.ImageDetails, error) {
 		return providerUtil.ImageDetails{}, fmt.Errorf("no image specified in bootstrap params")
 	}
 
-	if strings.Contains(r.BootstrapParams.Image, "/") {
-		return providerUtil.ImageDetails{
-			ID: r.BootstrapParams.Image,
-		}, nil
-	}
-
 	imgDetails, err := providerUtil.URNToImageDetails(r.BootstrapParams.Image)
 	if err != nil {
 		return providerUtil.ImageDetails{}, fmt.Errorf("failed to get image details: %w", err)
@@ -444,7 +437,11 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string, sizeSpec VMSiz
 	imageReference := &armcompute.ImageReference{}
 
 	if imgDetails.ID != "" {
-		imageReference.ID = to.Ptr(imgDetails.ID)
+		if imgDetails.IsCommunity {
+			imageReference.CommunityGalleryImageID = to.Ptr(imgDetails.ID)
+		} else {
+			imageReference.ID = to.Ptr(imgDetails.ID)
+		}
 	} else {
 		imageReference.Offer = to.Ptr(imgDetails.Offer)
 		imageReference.Publisher = to.Ptr(imgDetails.Publisher)

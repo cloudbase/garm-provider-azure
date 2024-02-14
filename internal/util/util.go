@@ -72,14 +72,26 @@ func TagsFromBootstrapParams(bootstrapParams params.BootstrapInstance, controlle
 }
 
 type ImageDetails struct {
-	ID        string
-	Offer     string
-	Publisher string
-	SKU       string
-	Version   string
+	ID          string
+	IsCommunity bool
+	Offer       string
+	Publisher   string
+	SKU         string
+	Version     string
 }
 
 func URNToImageDetails(urn string) (ImageDetails, error) {
+	// Gallery reference
+	if urn[0] == '/' {
+		// One of:
+		// /CommunityGalleries/<gallery>/Images/<name>/Versions/<version>
+		// /subscriptions/<subscription>/resourceGroups/<group>/providers/Microsoft.Compute/galleries/<gallery>/images/<name>/versions/<version>
+		return ImageDetails{
+			ID:          urn,
+			IsCommunity: strings.HasPrefix(urn, "/CommunityGalleries/"),
+		}, nil
+	}
+
 	// MicrosoftWindowsServer:WindowsServer:2022-Datacenter:latest
 	fields := strings.Split(urn, ":")
 	if len(fields) != 4 {
