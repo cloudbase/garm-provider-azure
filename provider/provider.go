@@ -41,12 +41,14 @@ func NewAzureProvider(configPath, controllerID string) (execution.ExternalProvid
 	return &azureProvider{
 		controllerID: controllerID,
 		azCli:        azCli,
+		cfg:          conf,
 	}, nil
 }
 
 type azureProvider struct {
 	controllerID string
 	azCli        *client.AzureCli
+	cfg          *config.Config
 }
 
 // CreateInstance creates a new compute instance in the provider.
@@ -56,7 +58,7 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		return params.ProviderInstance{}, fmt.Errorf("invalid architecture %s (supported: %s)", bootstrapParams.OSArch, params.Amd64)
 	}
 
-	spec, err := spec.GetRunnerSpecFromBootstrapParams(bootstrapParams, a.controllerID)
+	spec, err := spec.GetRunnerSpecFromBootstrapParams(bootstrapParams, a.controllerID, a.cfg)
 	if err != nil {
 		return params.ProviderInstance{}, fmt.Errorf("failed to generate spec: %w", err)
 	}
@@ -65,6 +67,30 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 	if err != nil {
 		return params.ProviderInstance{}, fmt.Errorf("failed to get image details: %w", err)
 	}
+
+	cacheSize := spec.DiskSizeGB
+	if spec.UseEphemeralStorage {
+		maxSize, err := a.azCli.GetMaxEphemeralDiskSize(ctx, spec.VMSize)
+		if err != nil {
+			return params.ProviderInstance{}, fmt.Errorf("failed to get max ephemeral disk size: %w", err)
+		}
+
+		// If confidential VMs are used with ephemeral storage, 1 GB is reserved.
+		// See: https://learn.microsoft.com/en-us/azure/virtual-machines/ephemeral-os-disks#confidential-vms-using-ephemeral-os-disks
+		// However, we disable confidential VMs for now, when ephemeral storage is used. We'll leave this recalculation of available
+		// space, in case we enable it in the future.
+		if spec.Confidential {
+			maxSize = maxSize - 1
+		}
+		if cacheSize == 0 {
+			cacheSize = maxSize
+		}
+
+		if maxSize < spec.DiskSizeGB {
+			return params.ProviderInstance{}, fmt.Errorf("maximul ephemeral disk size for %s is %d GB (requested %d)", spec.VMSize, maxSize, spec.DiskSizeGB)
+		}
+	}
+
 	_, err = a.azCli.CreateResourceGroup(ctx, spec.BootstrapParams.Name, spec.Tags)
 	if err != nil {
 		return params.ProviderInstance{}, fmt.Errorf("failed to create resource group: %w", err)
@@ -76,12 +102,12 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		}
 	}()
 
-	_, err = a.azCli.CreateVirtualNetwork(ctx, spec.BootstrapParams.Name, "10.10.0.0/16")
+	_, err = a.azCli.CreateVirtualNetwork(ctx, spec.BootstrapParams.Name, spec.VirtualNetworkCIDR)
 	if err != nil {
 		return params.ProviderInstance{}, fmt.Errorf("failed to create virtual network: %w", err)
 	}
 
-	subnet, err := a.azCli.CreateSubnet(ctx, spec.BootstrapParams.Name, "10.10.1.0/24")
+	subnet, err := a.azCli.CreateSubnet(ctx, spec.BootstrapParams.Name, spec.VirtualNetworkCIDR)
 	if err != nil {
 		return params.ProviderInstance{}, fmt.Errorf("failed to create subnet: %w", err)
 	}
@@ -104,12 +130,12 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		return params.ProviderInstance{}, fmt.Errorf("failed to create network security group: %w", err)
 	}
 
-	nic, err := a.azCli.CreateNetWorkInterface(ctx, spec.BootstrapParams.Name, *subnet.ID, *nsg.ID, pubIPID)
+	nic, err := a.azCli.CreateNetWorkInterface(ctx, spec.BootstrapParams.Name, *subnet.ID, *nsg.ID, pubIPID, spec.UseAcceleratedNetworking)
 	if err != nil {
 		return params.ProviderInstance{}, fmt.Errorf("failed to create NIC: %w", err)
 	}
 
-	if err := a.azCli.CreateVirtualMachine(ctx, spec, *nic.ID, spec.Tags); err != nil {
+	if err := a.azCli.CreateVirtualMachine(ctx, spec, *nic.ID, spec.Tags, cacheSize); err != nil {
 		return params.ProviderInstance{}, fmt.Errorf("failed to create VM: %w", err)
 	}
 

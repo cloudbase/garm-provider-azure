@@ -102,6 +102,14 @@ To this end, this provider supports the following extra specs schema:
             "type": "boolean",
             "description": "The selected virtual machine size is confidential."
         },
+        "use_ephemeral_storage": {
+            "type": "boolean",
+            "description": "Use ephemeral storage for the VM."
+        },
+        "use_accelerated_networking": {
+            "type": "boolean",
+            "description": "Use accelerated networking for the VM."
+        },
         "open_inbound_ports": {
             "type": "object",
             "description": "A map of protocol to list of inbound ports to open.",
@@ -129,6 +137,10 @@ To this end, this provider supports the following extra specs schema:
         "storage_account_type": {
             "type": "string",
             "description": "Azure storage account type. Default is Standard_LRS."
+        },
+        "virtual_network_cidr": {
+            "type": "string",
+            "description": "The CIDR for the virtual network."
         },
         "disk_size_gb": {
             "type": "integer",

@@ -16,6 +16,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -38,6 +39,14 @@ func NewConfig(cfgFile string) (*Config, error) {
 type Config struct {
 	Credentials Credentials `toml:"credentials"`
 	Location    string      `toml:"location"`
+	// UseEphemeralStorage is a flag that indicates whether the provider should use
+	// ephemeral storage for the VMs it creates. If true, the provider will use the
+	// ephemeral OS disk feature to create the VMs. Note, the size of the ephemeral
+	// OS disk is determined by the VM size, and the VM size must accomodate the size
+	// of the image.
+	UseEphemeralStorage      bool   `toml:"use_ephemeral_storage"`
+	VirtualNetworkCIDR       string `toml:"virtual_network_cidr"`
+	UseAcceleratedNetworking bool   `toml:"use_accelerated_networking"`
 }
 
 func (c *Config) Validate() error {
@@ -46,6 +55,12 @@ func (c *Config) Validate() error {
 	}
 	if err := c.Credentials.Validate(); err != nil {
 		return fmt.Errorf("failed to validate credentials: %w", err)
+	}
+
+	if c.VirtualNetworkCIDR != "" {
+		if _, _, err := net.ParseCIDR(c.VirtualNetworkCIDR); err != nil {
+			return fmt.Errorf("invalid virtual_network_cidr: %w", err)
+		}
 	}
 
 	return nil
