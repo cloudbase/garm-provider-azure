@@ -1,4 +1,7 @@
 location = "westeurope"
+use_ephemeral_storage = true
+virtual_network_cidr = "10.0.0.0/16"
+use_accelerated_networking = true
 
 [credentials]
 subscription_id = "sample_sub_id"

@@ -18,6 +18,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"path"
 	"strconv"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/cloudbase/garm-provider-common/util"
 	"golang.org/x/crypto/ssh"
 
+	"github.com/cloudbase/garm-provider-azure/config"
 	providerUtil "github.com/cloudbase/garm-provider-azure/internal/util"
 )
 
@@ -37,8 +39,26 @@ const (
 	defaultStorageAccountType = armcompute.StorageAccountTypesStandardLRS
 	windowsRunScriptTemplate  = "try { gc -Raw C:/AzureData/CustomData.bin | sc /run.ps1; /run.ps1 } finally { rm -Force -ErrorAction SilentlyContinue /run.ps1 }"
 
-	defaultDiskSizeGB int32 = 127
+	defaultDiskSizeGB             int32  = 127
+	defaultVirtualNetworkCIDR     string = "10.10.0.0/16"
+	defaultEphemeralDiskPlacement string = "ResourceDisk"
 )
+
+type VMSizeEphemeralDiskSizeLimits struct {
+	ResourceDiskSizeGB int32
+	CacheDiskSizeGB    int32
+}
+
+func (v VMSizeEphemeralDiskSizeLimits) EphemeralSettings() (int32, *armcompute.DiffDiskPlacement, error) {
+	if v.CacheDiskSizeGB > 0 {
+		return v.CacheDiskSizeGB, to.Ptr(armcompute.DiffDiskPlacementCacheDisk), nil
+	}
+	if v.ResourceDiskSizeGB > 0 {
+		return v.ResourceDiskSizeGB, to.Ptr(armcompute.DiffDiskPlacementResourceDisk), nil
+
+	}
+	return 0, nil, fmt.Errorf("invalid ephemeral disk size limits")
+}
 
 func newExtraSpecsFromBootstrapData(data params.BootstrapInstance) (*extraSpecs, error) {
 	spec := &extraSpecs{}
@@ -54,13 +74,16 @@ func newExtraSpecsFromBootstrapData(data params.BootstrapInstance) (*extraSpecs,
 }
 
 type extraSpecs struct {
-	AllocatePublicIP   bool                                      `json:"allocate_public_ip"`
-	OpenInboundPorts   map[armnetwork.SecurityRuleProtocol][]int `json:"open_inbound_ports"`
-	StorageAccountType armcompute.StorageAccountTypes            `json:"storage_account_type"`
-	DiskSizeGB         int32                                     `json:"disk_size_gb"`
-	ExtraTags          map[string]string                         `json:"extra_tags"`
-	SSHPublicKeys      []string                                  `json:"ssh_public_keys"`
-	Confidential       bool                                      `json:"confidential"`
+	AllocatePublicIP         bool                                      `json:"allocate_public_ip"`
+	OpenInboundPorts         map[armnetwork.SecurityRuleProtocol][]int `json:"open_inbound_ports"`
+	StorageAccountType       armcompute.StorageAccountTypes            `json:"storage_account_type"`
+	DiskSizeGB               int32                                     `json:"disk_size_gb"`
+	ExtraTags                map[string]string                         `json:"extra_tags"`
+	SSHPublicKeys            []string                                  `json:"ssh_public_keys"`
+	Confidential             bool                                      `json:"confidential"`
+	UseEphemeralStorage      *bool                                     `json:"use_ephemeral_storage"`
+	VirtualNetworkCIDR       string                                    `json:"virtual_network_cidr"`
+	UseAcceleratedNetworking *bool                                     `json:"use_accelerated_networking"`
 }
 
 func (e *extraSpecs) cleanInboundPorts() {
@@ -102,16 +125,17 @@ func (e *extraSpecs) cleanStorageAccountType() {
 func (e *extraSpecs) ensureValidExtraSpec() {
 	e.cleanInboundPorts()
 	e.cleanStorageAccountType()
-	if e.DiskSizeGB == 0 {
-		e.DiskSizeGB = defaultDiskSizeGB
-	}
 
 	if e.ExtraTags == nil {
 		e.ExtraTags = map[string]string{}
 	}
 }
 
-func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerID string) (*RunnerSpec, error) {
+func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerID string, cfg *config.Config) (*RunnerSpec, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("missing config")
+	}
+
 	tools, err := util.GetTools(data.OSType, data.OSArch, data.Tools)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tools: %s", err)
@@ -120,6 +144,19 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 	extraSpecs, err := newExtraSpecsFromBootstrapData(data)
 	if err != nil {
 		return nil, fmt.Errorf("error loading extra specs: %w", err)
+	}
+
+	// VirtualNetworkCIDR will be set to default, config value or extraSpecs value,
+	// in that order of precedence.
+	virtualNetworkCIDR := defaultVirtualNetworkCIDR
+	if cfg.VirtualNetworkCIDR != "" {
+		virtualNetworkCIDR = cfg.VirtualNetworkCIDR
+	}
+	if extraSpecs.VirtualNetworkCIDR != "" {
+		if _, _, err := net.ParseCIDR(extraSpecs.VirtualNetworkCIDR); err != nil {
+			return nil, fmt.Errorf("invalid virtual network CIDR: %w", err)
+		}
+		virtualNetworkCIDR = extraSpecs.VirtualNetworkCIDR
 	}
 
 	tags, err := providerUtil.TagsFromBootstrapParams(data, controllerID)
@@ -132,17 +169,32 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 	}
 
 	spec := &RunnerSpec{
-		VMSize:             data.Flavor,
-		AllocatePublicIP:   extraSpecs.AllocatePublicIP,
-		OpenInboundPorts:   extraSpecs.OpenInboundPorts,
-		AdminUsername:      appdefaults.DefaultUser,
-		StorageAccountType: extraSpecs.StorageAccountType,
-		DiskSizeGB:         extraSpecs.DiskSizeGB,
-		SSHPublicKeys:      extraSpecs.SSHPublicKeys,
-		BootstrapParams:    data,
-		Tools:              tools,
-		Tags:               tags,
-		Confidential:       extraSpecs.Confidential,
+		VMSize:                   data.Flavor,
+		AllocatePublicIP:         extraSpecs.AllocatePublicIP,
+		OpenInboundPorts:         extraSpecs.OpenInboundPorts,
+		AdminUsername:            appdefaults.DefaultUser,
+		StorageAccountType:       extraSpecs.StorageAccountType,
+		DiskSizeGB:               extraSpecs.DiskSizeGB,
+		SSHPublicKeys:            extraSpecs.SSHPublicKeys,
+		BootstrapParams:          data,
+		Tools:                    tools,
+		Tags:                     tags,
+		Confidential:             extraSpecs.Confidential,
+		UseEphemeralStorage:      cfg.UseEphemeralStorage,
+		VirtualNetworkCIDR:       virtualNetworkCIDR,
+		UseAcceleratedNetworking: cfg.UseAcceleratedNetworking,
+	}
+
+	if extraSpecs.UseEphemeralStorage != nil {
+		spec.UseEphemeralStorage = *extraSpecs.UseEphemeralStorage
+	}
+
+	if extraSpecs.UseAcceleratedNetworking != nil {
+		spec.UseAcceleratedNetworking = *extraSpecs.UseAcceleratedNetworking
+	}
+
+	if !spec.UseEphemeralStorage && spec.DiskSizeGB == 0 {
+		spec.DiskSizeGB = defaultDiskSizeGB
 	}
 
 	if err := spec.Validate(); err != nil {
@@ -153,17 +205,20 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 }
 
 type RunnerSpec struct {
-	VMSize             string
-	AllocatePublicIP   bool
-	AdminUsername      string
-	StorageAccountType armcompute.StorageAccountTypes
-	DiskSizeGB         int32
-	OpenInboundPorts   map[armnetwork.SecurityRuleProtocol][]int
-	BootstrapParams    params.BootstrapInstance
-	Tools              params.RunnerApplicationDownload
-	Tags               map[string]*string
-	SSHPublicKeys      []string
-	Confidential       bool
+	VMSize                   string
+	AllocatePublicIP         bool
+	AdminUsername            string
+	StorageAccountType       armcompute.StorageAccountTypes
+	DiskSizeGB               int32
+	OpenInboundPorts         map[armnetwork.SecurityRuleProtocol][]int
+	BootstrapParams          params.BootstrapInstance
+	Tools                    params.RunnerApplicationDownload
+	Tags                     map[string]*string
+	SSHPublicKeys            []string
+	Confidential             bool
+	UseEphemeralStorage      bool
+	VirtualNetworkCIDR       string
+	UseAcceleratedNetworking bool
 }
 
 func (r RunnerSpec) Validate() error {
@@ -178,7 +233,7 @@ func (r RunnerSpec) Validate() error {
 		return fmt.Errorf("missing storage account type")
 	}
 
-	if r.DiskSizeGB == 0 {
+	if r.DiskSizeGB == 0 && !r.UseEphemeralStorage {
 		return fmt.Errorf("invalid disk size")
 	}
 
@@ -282,7 +337,52 @@ func (r RunnerSpec) GetVMExtension(location, extName string) (*armcompute.Virtua
 	return nil, nil
 }
 
-func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.VirtualMachineProperties, error) {
+func (r RunnerSpec) ephemeralDiskSettings(placement *armcompute.DiffDiskPlacement) *armcompute.DiffDiskSettings {
+	if !r.UseEphemeralStorage {
+		return nil
+	}
+
+	return &armcompute.DiffDiskSettings{
+		Option:    to.Ptr(armcompute.DiffDiskOptionsLocal),
+		Placement: placement,
+	}
+}
+
+func (r RunnerSpec) managedDiskSettings() *armcompute.ManagedDiskParameters {
+	if r.UseEphemeralStorage {
+		return nil
+	}
+	params := &armcompute.ManagedDiskParameters{
+		StorageAccountType: &r.StorageAccountType,
+	}
+
+	if r.Confidential {
+		params.SecurityProfile = &armcompute.VMDiskSecurityProfile{
+			SecurityEncryptionType: to.Ptr(armcompute.SecurityEncryptionTypesVMGuestStateOnly),
+		}
+
+	}
+	return params
+}
+
+func (r RunnerSpec) securityProfile() *armcompute.SecurityProfile {
+	// There are limitations based on OS, region and VM size. Too many variables
+	// to sanely permit confidential VMs with ephemeral storage.
+	if !r.Confidential || r.UseEphemeralStorage {
+		return nil
+	}
+	securityProfile := &armcompute.SecurityProfile{
+		SecurityType: to.Ptr(armcompute.SecurityTypesConfidentialVM),
+		UefiSettings: &armcompute.UefiSettings{
+			SecureBootEnabled: to.Ptr(true),
+			VTpmEnabled:       to.Ptr(true),
+		},
+	}
+
+	return securityProfile
+}
+
+func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string, sizeSpec VMSizeEphemeralDiskSizeLimits) (*armcompute.VirtualMachineProperties, error) {
 	imgDetails, err := r.ImageDetails()
 	if err != nil {
 		return nil, fmt.Errorf("failed to getimage details: %w", err)
@@ -307,28 +407,30 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 		return nil, fmt.Errorf("missing vm size parameter")
 	}
 
-	var managedDiskParams *armcompute.ManagedDiskParameters
-	var securityProfile *armcompute.SecurityProfile
-	if r.Confidential {
-		managedDiskParams = &armcompute.ManagedDiskParameters{
-			StorageAccountType: &r.StorageAccountType,
-			SecurityProfile: &armcompute.VMDiskSecurityProfile{
-				SecurityEncryptionType: to.Ptr(armcompute.SecurityEncryptionTypesVMGuestStateOnly),
-			},
-		}
+	managedDiskParams := r.managedDiskSettings()
+	securityProfile := r.securityProfile()
+	cacheType := to.Ptr(armcompute.CachingTypesReadWrite)
+	diskSize := r.DiskSizeGB
+	var diffSettings *armcompute.DiffDiskSettings
 
-		securityProfile = &armcompute.SecurityProfile{
-			SecurityType: to.Ptr(armcompute.SecurityTypesConfidentialVM),
-			UefiSettings: &armcompute.UefiSettings{
-				SecureBootEnabled: to.Ptr(true),
-				VTpmEnabled:       to.Ptr(true),
-			},
+	if r.UseEphemeralStorage {
+		size, placement, err := sizeSpec.EphemeralSettings()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get ephemeral settings: %w", err)
 		}
-	} else {
-		managedDiskParams = &armcompute.ManagedDiskParameters{
-			StorageAccountType: &r.StorageAccountType,
+		diffSettings = r.ephemeralDiskSettings(placement)
+		cacheType = to.Ptr(armcompute.CachingTypesReadOnly)
+
+		if diskSize == 0 || diskSize >= size {
+			diskSize = size
+			// If confidential VMs are used with ephemeral storage, 1 GB is reserved.
+			// See: https://learn.microsoft.com/en-us/azure/virtual-machines/ephemeral-os-disks#confidential-vms-using-ephemeral-os-disks
+			// However, we disable confidential VMs for now, when ephemeral storage is used. We'll leave this recalculation of available
+			// space, in case we enable it in the future.
+			if r.Confidential {
+				diskSize = diskSize - 1
+			}
 		}
-		securityProfile = nil
 	}
 
 	properties := &armcompute.VirtualMachineProperties{
@@ -340,11 +442,12 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string) (*armcompute.V
 				Version:   to.Ptr(imgDetails.Version),
 			},
 			OSDisk: &armcompute.OSDisk{
-				Name:         to.Ptr(r.BootstrapParams.Name),
-				CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
-				Caching:      to.Ptr(armcompute.CachingTypesReadWrite),
-				ManagedDisk:  managedDiskParams,
-				DiskSizeGB:   &r.DiskSizeGB,
+				Name:             to.Ptr(r.BootstrapParams.Name),
+				CreateOption:     to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
+				Caching:          cacheType,
+				ManagedDisk:      managedDiskParams,
+				DiffDiskSettings: diffSettings,
+				DiskSizeGB:       &diskSize,
 			},
 		},
 		HardwareProfile: &armcompute.HardwareProfile{

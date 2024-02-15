@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -74,22 +75,28 @@ func NewAzCLI(cfg *config.Config) (*AzureCli, error) {
 		return nil, err
 	}
 
+	skuCLI, err := armcompute.NewResourceSKUsClient(cfg.Credentials.SubscriptionID, creds, &opts)
+	if err != nil {
+		return nil, err
+	}
+
 	extClient, err := armcompute.NewVirtualMachineExtensionsClient(cfg.Credentials.SubscriptionID, creds, &opts)
 	if err != nil {
 		return nil, err
 	}
 	azCli := &AzureCli{
-		cfg:       cfg,
-		cred:      creds,
-		rgCli:     resourceGroupClient,
-		netCli:    netCli,
-		subnetCli: subnetClient,
-		nsgCli:    nsgClient,
-		nicCli:    nicClient,
-		vmCli:     vmClient,
-		pubIPCli:  publicIPcli,
-		extCli:    extClient,
-		location:  cfg.Location,
+		cfg:            cfg,
+		cred:           creds,
+		rgCli:          resourceGroupClient,
+		netCli:         netCli,
+		subnetCli:      subnetClient,
+		nsgCli:         nsgClient,
+		nicCli:         nicClient,
+		vmCli:          vmClient,
+		pubIPCli:       publicIPcli,
+		extCli:         extClient,
+		location:       cfg.Location,
+		resourceSKUCli: skuCLI,
 	}
 	return azCli, nil
 }
@@ -98,14 +105,15 @@ type AzureCli struct {
 	cfg  *config.Config
 	cred azcore.TokenCredential
 
-	rgCli     *armresources.ResourceGroupsClient
-	netCli    *armnetwork.VirtualNetworksClient
-	subnetCli *armnetwork.SubnetsClient
-	nsgCli    *armnetwork.SecurityGroupsClient
-	nicCli    *armnetwork.InterfacesClient
-	vmCli     *armcompute.VirtualMachinesClient
-	pubIPCli  *armnetwork.PublicIPAddressesClient
-	extCli    *armcompute.VirtualMachineExtensionsClient
+	rgCli          *armresources.ResourceGroupsClient
+	netCli         *armnetwork.VirtualNetworksClient
+	subnetCli      *armnetwork.SubnetsClient
+	nsgCli         *armnetwork.SecurityGroupsClient
+	nicCli         *armnetwork.InterfacesClient
+	vmCli          *armcompute.VirtualMachinesClient
+	pubIPCli       *armnetwork.PublicIPAddressesClient
+	extCli         *armcompute.VirtualMachineExtensionsClient
+	resourceSKUCli *armcompute.ResourceSKUsClient
 
 	location string
 }
@@ -194,7 +202,7 @@ func (a *AzureCli) CreateNetworkSecurityGroup(ctx context.Context, baseName stri
 	return &resp.SecurityGroup, nil
 }
 
-func (a *AzureCli) CreateNetWorkInterface(ctx context.Context, baseName, subnetID, networkSecurityGroupID, publicIPID string) (*armnetwork.Interface, error) {
+func (a *AzureCli) CreateNetWorkInterface(ctx context.Context, baseName, subnetID, networkSecurityGroupID, publicIPID string, acceletatedNetworking bool) (*armnetwork.Interface, error) {
 	interfaceIPConfig := &armnetwork.InterfaceIPConfigurationPropertiesFormat{
 		PrivateIPAllocationMethod: to.Ptr(armnetwork.IPAllocationMethodDynamic),
 		Subnet: &armnetwork.Subnet{
@@ -211,6 +219,7 @@ func (a *AzureCli) CreateNetWorkInterface(ctx context.Context, baseName, subnetI
 	parameters := armnetwork.Interface{
 		Location: to.Ptr(a.location),
 		Properties: &armnetwork.InterfacePropertiesFormat{
+			EnableAcceleratedNetworking: to.Ptr(acceletatedNetworking),
 			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
 				{
 					Name:       to.Ptr("ipConfig"),
@@ -256,17 +265,18 @@ func (a *AzureCli) CreatePublicIP(ctx context.Context, baseName string) (*armnet
 	return &resp.PublicIPAddress, err
 }
 
-func (a *AzureCli) CreateVirtualMachine(ctx context.Context, spec *spec.RunnerSpec, networkInterfaceID string, tags map[string]*string) error {
+func (a *AzureCli) CreateVirtualMachine(ctx context.Context, spec *spec.RunnerSpec, networkInterfaceID string, sizeSpec spec.VMSizeEphemeralDiskSizeLimits) error {
 	if spec == nil {
 		return fmt.Errorf("invalid nil runner spec")
 	}
-	properties, err := spec.GetNewVMProperties(networkInterfaceID)
+
+	properties, err := spec.GetNewVMProperties(networkInterfaceID, sizeSpec)
 	if err != nil {
 		return fmt.Errorf("failed to get new VM properties: %w", err)
 	}
 	parameters := armcompute.VirtualMachine{
 		Location: to.Ptr(a.location),
-		Tags:     tags,
+		Tags:     spec.Tags,
 		Identity: &armcompute.VirtualMachineIdentity{
 			Type: to.Ptr(armcompute.ResourceIdentityTypeNone),
 		},
@@ -292,6 +302,62 @@ func (a *AzureCli) CreateVirtualMachine(ctx context.Context, spec *spec.RunnerSp
 	}
 
 	return nil
+}
+
+func (a *AzureCli) GetMaxEphemeralDiskSize(ctx context.Context, vmSize string) (spec.VMSizeEphemeralDiskSizeLimits, error) {
+	opts := &armcompute.ResourceSKUsClientListOptions{
+		Filter: to.Ptr(fmt.Sprintf("location eq '%s'", a.location)),
+	}
+	pager := a.resourceSKUCli.NewListPager(opts)
+	for pager.More() {
+		resp, err := pager.NextPage(ctx)
+		if err != nil {
+			return spec.VMSizeEphemeralDiskSizeLimits{}, fmt.Errorf("failed to get VM size details: %w", err)
+		}
+		if resp.ResourceSKUsResult.Value != nil {
+			for _, val := range resp.ResourceSKUsResult.Value {
+				if *val.ResourceType == "virtualMachines" && *val.Name == vmSize {
+					var ephemeralSupported string
+					var cacheBytes string
+					var resourceDiskMB string
+					for _, capability := range val.Capabilities {
+						switch *capability.Name {
+						case "EphemeralOSDiskSupported":
+							ephemeralSupported = *capability.Value
+						case "CachedDiskBytes":
+							cacheBytes = *capability.Value
+						case "MaxResourceVolumeMB":
+							resourceDiskMB = *capability.Value
+						}
+					}
+					var res spec.VMSizeEphemeralDiskSizeLimits
+					if ephemeralSupported == "True" {
+						if cacheBytes != "" {
+							asInt64, err := strconv.ParseInt(cacheBytes, 10, 64)
+							if err != nil {
+								return spec.VMSizeEphemeralDiskSizeLimits{}, fmt.Errorf("failed to parse cache bytes: %w", err)
+							}
+							inGB := asInt64 / 1024 / 1024 / 1024
+							res.CacheDiskSizeGB = int32(inGB)
+						}
+
+						if resourceDiskMB != "" {
+							asInt64, err := strconv.ParseInt(resourceDiskMB, 10, 64)
+							if err != nil {
+								return spec.VMSizeEphemeralDiskSizeLimits{}, fmt.Errorf("failed to parse resource disk MB: %w", err)
+							}
+							inGB := asInt64 / 1024
+							res.ResourceDiskSizeGB = int32(inGB)
+						}
+						if res.CacheDiskSizeGB != 0 || res.ResourceDiskSizeGB != 0 {
+							return res, nil
+						}
+					}
+				}
+			}
+		}
+	}
+	return spec.VMSizeEphemeralDiskSizeLimits{}, fmt.Errorf("failed to get VM size details for %s", vmSize)
 }
 
 func (a *AzureCli) DeleteResourceGroup(ctx context.Context, resourceGroup string, forceDelete bool) error {
