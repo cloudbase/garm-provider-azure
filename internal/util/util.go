@@ -72,6 +72,7 @@ func TagsFromBootstrapParams(bootstrapParams params.BootstrapInstance, controlle
 }
 
 type ImageDetails struct {
+	ID        string
 	Offer     string
 	Publisher string
 	SKU       string
