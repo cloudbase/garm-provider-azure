@@ -21,6 +21,7 @@ import (
 	"net"
 	"path"
 	"strconv"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
@@ -260,6 +261,13 @@ func (r RunnerSpec) ImageDetails() (providerUtil.ImageDetails, error) {
 	if r.BootstrapParams.Image == "" {
 		return providerUtil.ImageDetails{}, fmt.Errorf("no image specified in bootstrap params")
 	}
+
+	if strings.Contains(r.BootstrapParams.Image, "/") {
+		return providerUtil.ImageDetails{
+			ID: r.BootstrapParams.Image,
+		}, nil
+	}
+
 	imgDetails, err := providerUtil.URNToImageDetails(r.BootstrapParams.Image)
 	if err != nil {
 		return providerUtil.ImageDetails{}, fmt.Errorf("failed to get image details: %w", err)
@@ -433,14 +441,20 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string, sizeSpec VMSiz
 		}
 	}
 
+	imageReference := &armcompute.ImageReference{}
+
+	if imgDetails.ID != "" {
+		imageReference.ID = to.Ptr(imgDetails.ID)
+	} else {
+		imageReference.Offer = to.Ptr(imgDetails.Offer)
+		imageReference.Publisher = to.Ptr(imgDetails.Publisher)
+		imageReference.SKU = to.Ptr(imgDetails.SKU)
+		imageReference.Version = to.Ptr(imgDetails.Version)
+	}
+
 	properties := &armcompute.VirtualMachineProperties{
 		StorageProfile: &armcompute.StorageProfile{
-			ImageReference: &armcompute.ImageReference{
-				Offer:     to.Ptr(imgDetails.Offer),
-				Publisher: to.Ptr(imgDetails.Publisher),
-				SKU:       to.Ptr(imgDetails.SKU),
-				Version:   to.Ptr(imgDetails.Version),
-			},
+			ImageReference: imageReference,
 			OSDisk: &armcompute.OSDisk{
 				Name:             to.Ptr(r.BootstrapParams.Name),
 				CreateOption:     to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
