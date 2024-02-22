@@ -467,7 +467,7 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string, sizeSpec VMSiz
 		OSProfile: &armcompute.OSProfile{
 			CustomData: &asBase64,
 			// Windows computer names may not be longer than 15 characters.
-			ComputerName:  to.Ptr(r.BootstrapParams.Name[:15]),
+			ComputerName:  to.Ptr(r.BootstrapParams.Name[:min(len(r.BootstrapParams.Name), 15)]),
 			AdminUsername: to.Ptr(r.AdminUsername),
 			AdminPassword: &password,
 		},
