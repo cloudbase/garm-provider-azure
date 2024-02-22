@@ -156,6 +156,10 @@ To this end, this provider supports the following extra specs schema:
             "items": {
                 "type": "string"
             }
+        },
+        "vnet_subnet_id": {
+            "type": "string",
+            "description": "The ID of the subnet to use for the VM. Must be in the same region as the VM."
         }
     }
 }
@@ -176,7 +180,8 @@ An example extra specs json would look like this:
     },
     "ssh_public_keys": [
         "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC2oT7j/+elHY9U2ibgk2R...."
-    ]
+    ],
+    "vnet_subnet_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myResourceGroup/providers/Microsoft.Network/virtualNetworks/myVnet/subnets/mySubnet"
 }
 ```
 

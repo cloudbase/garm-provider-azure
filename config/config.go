@@ -17,6 +17,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"regexp"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -47,6 +48,7 @@ type Config struct {
 	UseEphemeralStorage      bool   `toml:"use_ephemeral_storage"`
 	VirtualNetworkCIDR       string `toml:"virtual_network_cidr"`
 	UseAcceleratedNetworking bool   `toml:"use_accelerated_networking"`
+	VnetSubnetID             string `toml:"vnet_subnet_id"`
 }
 
 func (c *Config) Validate() error {
@@ -61,6 +63,11 @@ func (c *Config) Validate() error {
 		if _, _, err := net.ParseCIDR(c.VirtualNetworkCIDR); err != nil {
 			return fmt.Errorf("invalid virtual_network_cidr: %w", err)
 		}
+	}
+	re := regexp.MustCompile(`/subscriptions/[a-f0-9-]{36}/resourceGroups/[a-zA-Z0-9-]+/providers/Microsoft.Network/virtualNetworks/[a-zA-Z0-9-]+/subnets/[a-zA-Z0-9-]+"`)
+
+	if c.VnetSubnetID != "" && !re.MatchString(c.VnetSubnetID) {
+		return fmt.Errorf("invalid vnet_subnet_id, please use the format: /subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Network/virtualNetworks/{vnet_name}/subnets/{subnet_name}")
 	}
 
 	return nil
