@@ -1,6 +1,6 @@
 module github.com/cloudbase/garm-provider-azure
 
-go 1.19
+go 1.22
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.0.0
