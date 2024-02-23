@@ -55,7 +55,6 @@ func (v VMSizeEphemeralDiskSizeLimits) EphemeralSettings() (int32, *armcompute.D
 	}
 	if v.ResourceDiskSizeGB > 0 {
 		return v.ResourceDiskSizeGB, to.Ptr(armcompute.DiffDiskPlacementResourceDisk), nil
-
 	}
 	return 0, nil, fmt.Errorf("invalid ephemeral disk size limits")
 }
@@ -183,6 +182,8 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 		UseEphemeralStorage:      cfg.UseEphemeralStorage,
 		VirtualNetworkCIDR:       virtualNetworkCIDR,
 		UseAcceleratedNetworking: cfg.UseAcceleratedNetworking,
+		VnetSubnetID:             cfg.VnetSubnetID,
+		DisableIsolatedNetworks:  cfg.DisableIsolatedNetworks,
 	}
 
 	if extraSpecs.UseEphemeralStorage != nil {
@@ -219,6 +220,8 @@ type RunnerSpec struct {
 	UseEphemeralStorage      bool
 	VirtualNetworkCIDR       string
 	UseAcceleratedNetworking bool
+	VnetSubnetID             string
+	DisableIsolatedNetworks  bool
 }
 
 func (r RunnerSpec) Validate() error {
@@ -361,7 +364,6 @@ func (r RunnerSpec) managedDiskSettings() *armcompute.ManagedDiskParameters {
 		params.SecurityProfile = &armcompute.VMDiskSecurityProfile{
 			SecurityEncryptionType: to.Ptr(armcompute.SecurityEncryptionTypesVMGuestStateOnly),
 		}
-
 	}
 	return params
 }

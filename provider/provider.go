@@ -104,16 +104,6 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		}
 	}()
 
-	_, err = a.azCli.CreateVirtualNetwork(ctx, runnerSpec.BootstrapParams.Name, runnerSpec.VirtualNetworkCIDR)
-	if err != nil {
-		return params.ProviderInstance{}, fmt.Errorf("failed to create virtual network: %w", err)
-	}
-
-	subnet, err := a.azCli.CreateSubnet(ctx, runnerSpec.BootstrapParams.Name, runnerSpec.VirtualNetworkCIDR)
-	if err != nil {
-		return params.ProviderInstance{}, fmt.Errorf("failed to create subnet: %w", err)
-	}
-
 	var pubIPID string
 	var pubIP string
 	if runnerSpec.AllocatePublicIP {
@@ -132,7 +122,12 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		return params.ProviderInstance{}, fmt.Errorf("failed to create network security group: %w", err)
 	}
 
-	nic, err := a.azCli.CreateNetWorkInterface(ctx, runnerSpec.BootstrapParams.Name, *subnet.ID, *nsg.ID, pubIPID, runnerSpec.UseAcceleratedNetworking)
+	subnetID, err := a.resolveSubnetID(ctx, runnerSpec)
+	if err != nil {
+		return params.ProviderInstance{}, fmt.Errorf("failed to resolve subnet ID: %w", err)
+	}
+
+	nic, err := a.azCli.CreateNetWorkInterface(ctx, runnerSpec.BootstrapParams.Name, subnetID, *nsg.ID, pubIPID, runnerSpec.UseAcceleratedNetworking)
 	if err != nil {
 		return params.ProviderInstance{}, fmt.Errorf("failed to create NIC: %w", err)
 	}
@@ -161,6 +156,24 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		})
 	}
 	return instance, nil
+}
+
+func (a *azureProvider) resolveSubnetID(ctx context.Context, runnerSpec *spec.RunnerSpec) (string, error) {
+	if runnerSpec.VnetSubnetID != "" && runnerSpec.DisableIsolatedNetworks {
+		return runnerSpec.VnetSubnetID, nil
+	}
+
+	_, err := a.azCli.CreateVirtualNetwork(ctx, runnerSpec.BootstrapParams.Name, runnerSpec.VirtualNetworkCIDR)
+	if err != nil {
+		return "", fmt.Errorf("failed to create virtual network: %w", err)
+	}
+
+	subnet, err := a.azCli.CreateSubnet(ctx, runnerSpec.BootstrapParams.Name, runnerSpec.VirtualNetworkCIDR)
+	if err != nil {
+		return "", fmt.Errorf("failed to create subnet: %w", err)
+	}
+
+	return *subnet.ID, nil
 }
 
 // Delete instance will delete the instance in a provider.
