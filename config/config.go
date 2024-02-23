@@ -49,6 +49,7 @@ type Config struct {
 	VirtualNetworkCIDR       string `toml:"virtual_network_cidr"`
 	UseAcceleratedNetworking bool   `toml:"use_accelerated_networking"`
 	VnetSubnetID             string `toml:"vnet_subnet_id"`
+	DisableIsolatedNetworks  bool   `toml:"disable_isolated_networks"`
 }
 
 func (c *Config) Validate() error {

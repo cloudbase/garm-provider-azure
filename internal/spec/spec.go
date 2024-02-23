@@ -183,6 +183,7 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 		VirtualNetworkCIDR:       virtualNetworkCIDR,
 		UseAcceleratedNetworking: cfg.UseAcceleratedNetworking,
 		VnetSubnetID:             cfg.VnetSubnetID,
+		DisableIsolatedNetworks:  cfg.DisableIsolatedNetworks,
 	}
 
 	if extraSpecs.UseEphemeralStorage != nil {
@@ -220,6 +221,7 @@ type RunnerSpec struct {
 	VirtualNetworkCIDR       string
 	UseAcceleratedNetworking bool
 	VnetSubnetID             string
+	DisableIsolatedNetworks  bool
 }
 
 func (r RunnerSpec) Validate() error {
