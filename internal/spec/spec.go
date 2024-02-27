@@ -83,6 +83,8 @@ type extraSpecs struct {
 	UseEphemeralStorage      *bool                                     `json:"use_ephemeral_storage"`
 	VirtualNetworkCIDR       string                                    `json:"virtual_network_cidr"`
 	UseAcceleratedNetworking *bool                                     `json:"use_accelerated_networking"`
+	VnetSubnetID			 string                                    `json:"vnet_subnet_id"`
+	DisableIsolatedNetworks  *bool                                     `json:"disable_isolated_networks"`
 }
 
 func (e *extraSpecs) cleanInboundPorts() {
@@ -194,6 +196,14 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 		spec.UseAcceleratedNetworking = *extraSpecs.UseAcceleratedNetworking
 	}
 
+	if extraSpecs.DisableIsolatedNetworks != nil {
+		spec.DisableIsolatedNetworks = *extraSpecs.DisableIsolatedNetworks
+	}
+
+	if extraSpecs.VnetSubnetID != "" && spec.DisableIsolatedNetworks {
+		spec.VnetSubnetID = extraSpecs.VnetSubnetID
+	}
+
 	if !spec.UseEphemeralStorage && spec.DiskSizeGB == 0 {
 		spec.DiskSizeGB = defaultDiskSizeGB
 	}
@@ -246,6 +256,10 @@ func (r RunnerSpec) Validate() error {
 
 	if r.BootstrapParams.Name == "" || r.BootstrapParams.OSType == "" || r.BootstrapParams.InstanceToken == "" {
 		return fmt.Errorf("invalid bootstrap params")
+	}
+
+	if err := config.ValidateVnetSubnet(r.VnetSubnetID); err != nil {
+		return fmt.Errorf("invalid vnet subnet id: %w", err)
 	}
 
 	if len(r.SSHPublicKeys) > 0 {

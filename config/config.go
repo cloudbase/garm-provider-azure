@@ -65,10 +65,9 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("invalid virtual_network_cidr: %w", err)
 		}
 	}
-	re := regexp.MustCompile(`/subscriptions/[a-f0-9-]{36}/resourceGroups/[a-zA-Z0-9-]+/providers/Microsoft.Network/virtualNetworks/[a-zA-Z0-9-]+/subnets/[a-zA-Z0-9-]+"`)
 
-	if c.VnetSubnetID != "" && !re.MatchString(c.VnetSubnetID) {
-		return fmt.Errorf("invalid vnet_subnet_id, please use the format: /subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Network/virtualNetworks/{vnet_name}/subnets/{subnet_name}")
+	if err := ValidateVnetSubnet(c.VnetSubnetID); err != nil {
+		return fmt.Errorf("invalid vnet_subnet_id: %w", err)
 	}
 
 	return nil
@@ -95,6 +94,19 @@ func (c Credentials) Validate() error {
 	}
 
 	return nil
+}
+
+var vnetSubnetRe = regexp.MustCompile(`/subscriptions/[a-f0-9-]{36}/resourceGroups/[a-zA-Z0-9-]+/providers/Microsoft.Network/virtualNetworks/[a-zA-Z0-9-]+/subnets/[a-zA-Z0-9-]+`)
+
+func ValidateVnetSubnet(vnetSubnet string) error {
+	if vnetSubnet == "" {
+		return nil
+	}
+
+	if vnetSubnetRe.MatchString(vnetSubnet) {
+		return nil
+	}
+	return fmt.Errorf("invalid vnet subnet, must match %s", vnetSubnetRe.String())
 }
 
 func (c Credentials) GetCredentials() (azcore.TokenCredential, error) {
