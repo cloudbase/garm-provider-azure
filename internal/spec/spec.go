@@ -83,7 +83,7 @@ type extraSpecs struct {
 	UseEphemeralStorage      *bool                                     `json:"use_ephemeral_storage"`
 	VirtualNetworkCIDR       string                                    `json:"virtual_network_cidr"`
 	UseAcceleratedNetworking *bool                                     `json:"use_accelerated_networking"`
-	VnetSubnetID			 string                                    `json:"vnet_subnet_id"`
+	VnetSubnetID             string                                    `json:"vnet_subnet_id"`
 	DisableIsolatedNetworks  *bool                                     `json:"disable_isolated_networks"`
 }
 

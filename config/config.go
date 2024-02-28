@@ -66,8 +66,10 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	if err := ValidateVnetSubnet(c.VnetSubnetID); err != nil {
-		return fmt.Errorf("invalid vnet_subnet_id: %w", err)
+	if c.DisableIsolatedNetworks {
+		if err := ValidateVnetSubnet(c.VnetSubnetID); err != nil {
+			return fmt.Errorf("invalid vnet_subnet_id: %w", err)
+		}
 	}
 
 	return nil
