@@ -50,6 +50,19 @@ type Config struct {
 	UseAcceleratedNetworking bool   `toml:"use_accelerated_networking"`
 	VnetSubnetID             string `toml:"vnet_subnet_id"`
 	DisableIsolatedNetworks  bool   `toml:"disable_isolated_networks"`
+
+	// DisableUdatesOnBoot indicates whether to install or update packages on boot during cloud-init.
+	// If set to true `PackageUpgrade` is set to false and `Packages` is set to an empty list in the cloud-init config.
+	//
+	// This value can NOT be overwritten using extra_specs.
+	DisableUpdatesOnBoot bool `toml:"disable_updates_on_boot"`
+
+	// EnableBootDebug indicates whether to enable debug mode during boot / cloud-init.
+	// If set to true `set -x` is added to the cloud-init config.
+	// Attention: This will might expose sensitive data in the logs! Do not use in production!
+	//
+	// This value can be overwritten using extra_specs.
+	EnableBootDebug bool `toml:"enable_boot_debug"`
 }
 
 func (c *Config) Validate() error {

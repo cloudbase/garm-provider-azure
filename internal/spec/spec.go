@@ -119,6 +119,14 @@ const (
 				"disable_isolated_networks": {
 					"type": "boolean",
 					"description": "Disable network isolation for the VM."
+				},
+				"enable_boot_debug": {
+					"type": "boolean",
+					"description": "Enable boot debug for the VM."
+				},
+				"disable_updates": {
+					"type": "boolean",
+					"description": "Disable automatic updates on the VM."
 				}
 			},
 			"additionalProperties": false
@@ -184,6 +192,8 @@ type extraSpecs struct {
 	UseAcceleratedNetworking *bool                                     `json:"use_accelerated_networking"`
 	VnetSubnetID             string                                    `json:"vnet_subnet_id"`
 	DisableIsolatedNetworks  *bool                                     `json:"disable_isolated_networks"`
+	EnableBootDebug          *bool                                     `json:"enable_boot_debug"`
+	DisableUpdatesOnBoot     *bool                                     `json:"disable_updates"`
 }
 
 func (e *extraSpecs) cleanInboundPorts() {
@@ -268,6 +278,14 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 		tags[name] = to.Ptr(val)
 	}
 
+	if cfg.DisableUpdatesOnBoot {
+		data.UserDataOptions.DisableUpdatesOnBoot = true
+	}
+
+	if cfg.EnableBootDebug {
+		data.UserDataOptions.EnableBootDebug = true
+	}
+
 	spec := &RunnerSpec{
 		VMSize:                   data.Flavor,
 		AllocatePublicIP:         extraSpecs.AllocatePublicIP,
@@ -305,6 +323,14 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 
 	if !spec.UseEphemeralStorage && spec.DiskSizeGB == 0 {
 		spec.DiskSizeGB = defaultDiskSizeGB
+	}
+
+	if extraSpecs.EnableBootDebug != nil {
+		data.UserDataOptions.EnableBootDebug = *extraSpecs.EnableBootDebug
+	}
+
+	if extraSpecs.DisableUpdatesOnBoot != nil {
+		data.UserDataOptions.DisableUpdatesOnBoot = *extraSpecs.DisableUpdatesOnBoot
 	}
 
 	if err := spec.Validate(); err != nil {

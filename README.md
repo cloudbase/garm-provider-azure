@@ -41,7 +41,7 @@ subscription_id = "sample_sub_id"
     client_secret = "super secret client secret"
 
     # The managed identity token source is always added to the chain of possible authentication
-    # sources. The client ID can be overwritten if needed. 
+    # sources. The client ID can be overwritten if needed.
     [credentials.managed_identity]
     # The client ID to use. This config value is optional.
     client_id = "sample_client_id"
@@ -164,6 +164,15 @@ To this end, this provider supports the following extra specs schema:
         "disable_isolated_networks": {
             "type": "boolean",
             "description": "Disable network isolation for the VM."
+        },
+        "enable_boot_debug": {
+            "type": "boolean",
+            "description": "Enable cloud-init debug mode. Adds 'set -x' into the cloud-init script."
+        },
+        "disable_updates": {
+            "type": "boolean",
+            "description": "Disable automatic updates on the VM."
+
         }
     },
 	"additionalProperties": false
