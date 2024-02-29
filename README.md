@@ -159,9 +159,9 @@ To this end, this provider supports the following extra specs schema:
         },
         "vnet_subnet_id": {
             "type": "string",
-            "description": "The ID of the subnet to use for the VM. Must be in the same region as the VM. This is required if disable_network_isolation is set to true, otherwise it is ignored."
+            "description": "The ID of the subnet to use for the VM. Must be in the same region as the VM. This is required if disable_isolated_networks is set to true, otherwise it is ignored."
         },
-        "disable_network_isolation": {
+        "disable_isolated_networks": {
             "type": "boolean",
             "description": "Disable network isolation for the VM."
         }
