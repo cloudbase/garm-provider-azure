@@ -165,7 +165,8 @@ To this end, this provider supports the following extra specs schema:
             "type": "boolean",
             "description": "Disable network isolation for the VM."
         }
-    }
+    },
+	"additionalProperties": false
 }
 ```
 
