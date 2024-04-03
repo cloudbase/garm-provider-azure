@@ -29,6 +29,7 @@ import (
 	appdefaults "github.com/cloudbase/garm-provider-common/defaults"
 	"github.com/cloudbase/garm-provider-common/params"
 	"github.com/cloudbase/garm-provider-common/util"
+	"github.com/xeipuuv/gojsonschema"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/cloudbase/garm-provider-azure/config"
@@ -42,7 +43,101 @@ const (
 	defaultDiskSizeGB             int32  = 127
 	defaultVirtualNetworkCIDR     string = "10.10.0.0/16"
 	defaultEphemeralDiskPlacement string = "ResourceDisk"
+	jsonSchema                    string = `
+		{
+			"$schema": "http://cloudbase.it/garm-provider-azure/schemas/extra_specs#",
+			"type": "object",
+			"description": "Schema defining supported extra specs for the Garm Azure Provider",
+			"properties": {
+				"allocate_public_ip": {
+					"type": "boolean",
+					"description": "Allocate a public IP to the VM."
+				},
+				"confidential": {
+					"type": "boolean",
+					"description": "The selected virtual machine size is confidential."
+				},
+				"use_ephemeral_storage": {
+					"type": "boolean",
+					"description": "Use ephemeral storage for the VM."
+				},
+				"use_accelerated_networking": {
+					"type": "boolean",
+					"description": "Use accelerated networking for the VM."
+				},
+				"open_inbound_ports": {
+					"type": "object",
+					"description": "A map of protocol to list of inbound ports to open.",
+					"properties": {
+						"Tcp": {
+							"type": "array",
+							"description": "List of ports to open.",
+							"items": {
+								"type": "integer",
+								"minimum": 1,
+								"maximum": 65535,
+							}
+						},
+						"Udp": {
+							"type": "array",
+							"description": "List of ports to open.",
+							"items": {
+								"type": "integer",
+								"minimum": 1,
+								"maximum": 65535,
+							}
+						}
+					}
+				},
+				"storage_account_type": {
+					"type": "string",
+					"description": "Azure storage account type. Default is Standard_LRS."
+				},
+				"virtual_network_cidr": {
+					"type": "string",
+					"description": "The CIDR for the virtual network."
+				},
+				"disk_size_gb": {
+					"type": "integer",
+					"description": "The size of the root disk in GB. Default is 127 GB."
+				},
+				"extra_tags": {
+					"type": "object",
+					"description": "Extra tags that will get added to all VMs spawned in a pool."
+				},
+				"ssh_public_keys": {
+					"type": "array",
+					"description": "SSH public keys to add to the admin user on Linux runners.",
+					"items": {
+						"type": "string"
+					}
+				},
+				"vnet_subnet_id": {
+					"type": "string",
+					"description": "The ID of the subnet to use for the VM. Must be in the same region as the VM. This is required if disable_isolated_networks is set to true, otherwise it is ignored."
+				},
+				"disable_isolated_networks": {
+					"type": "boolean",
+					"description": "Disable network isolation for the VM."
+				}
+			},
+			"additionalProperties": false
+		}
+	`
 )
+
+func jsonSchemaValidation(schema json.RawMessage) error {
+	schemaLoader := gojsonschema.NewStringLoader(jsonSchema)
+	extraSpecsLoader := gojsonschema.NewBytesLoader(schema)
+	result, err := gojsonschema.Validate(schemaLoader, extraSpecsLoader)
+	if err != nil {
+		return fmt.Errorf("failed to validate schema: %w", err)
+	}
+	if !result.Valid() {
+		return fmt.Errorf("schema validation failed: %s", result.Errors())
+	}
+	return nil
+}
 
 type VMSizeEphemeralDiskSizeLimits struct {
 	ResourceDiskSizeGB int32
@@ -61,6 +156,10 @@ func (v VMSizeEphemeralDiskSizeLimits) EphemeralSettings() (int32, *armcompute.D
 
 func newExtraSpecsFromBootstrapData(data params.BootstrapInstance) (*extraSpecs, error) {
 	spec := &extraSpecs{}
+
+	if err := jsonSchemaValidation(data.ExtraSpecs); err != nil {
+		return nil, fmt.Errorf("failed to validate extra specs: %w", err)
+	}
 
 	if len(data.ExtraSpecs) > 0 {
 		if err := json.Unmarshal(data.ExtraSpecs, spec); err != nil {
