@@ -120,7 +120,7 @@ To this end, this provider supports the following extra specs schema:
                     "items": {
                         "type": "integer",
                         "minimum": 1,
-                        "maximum": 65535,
+                        "maximum": 65535
                     }
                 },
                 "Udp": {
@@ -129,7 +129,7 @@ To this end, this provider supports the following extra specs schema:
                     "items": {
                         "type": "integer",
                         "minimum": 1,
-                        "maximum": 65535,
+                        "maximum": 65535
                     }
                 }
             }
