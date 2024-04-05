@@ -75,7 +75,7 @@ const (
 							"items": {
 								"type": "integer",
 								"minimum": 1,
-								"maximum": 65535,
+								"maximum": 65535
 							}
 						},
 						"Udp": {
@@ -84,7 +84,7 @@ const (
 							"items": {
 								"type": "integer",
 								"minimum": 1,
-								"maximum": 65535,
+								"maximum": 65535
 							}
 						}
 					}
