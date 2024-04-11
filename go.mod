@@ -9,7 +9,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v5 v5.1.1
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources v1.2.0
 	github.com/BurntSushi/toml v1.2.1
-	github.com/cloudbase/garm-provider-common v0.1.1
+	github.com/cloudbase/garm-provider-common v0.1.2-0.20240411194339-62b33c5d84ec
 	github.com/stretchr/testify v1.8.4
 	github.com/xeipuuv/gojsonschema v1.2.0
 	golang.org/x/crypto v0.21.0
