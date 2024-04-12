@@ -23,8 +23,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v5"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 
 	"github.com/cloudbase/garm-provider-azure/config"
@@ -116,6 +116,38 @@ type AzureCli struct {
 	resourceSKUCli *armcompute.ResourceSKUsClient
 
 	location string
+}
+
+func (a *AzureCli) Config() *config.Config {
+	return a.cfg
+}
+
+func (a *AzureCli) SetConfig(cfg *config.Config) {
+	a.cfg = cfg
+}
+
+func (a *AzureCli) Location() string {
+	return a.location
+}
+
+func (a *AzureCli) SetLocation(location string) {
+	a.location = location
+}
+
+func (a *AzureCli) Clients() (rgCli *armresources.ResourceGroupsClient, netCli *armnetwork.VirtualNetworksClient, subnetCli *armnetwork.SubnetsClient, nsgCli *armnetwork.SecurityGroupsClient, nicCli *armnetwork.InterfacesClient, vmCli *armcompute.VirtualMachinesClient, pubIPCli *armnetwork.PublicIPAddressesClient, extCli *armcompute.VirtualMachineExtensionsClient, skuCli *armcompute.ResourceSKUsClient) {
+	return a.rgCli, a.netCli, a.subnetCli, a.nsgCli, a.nicCli, a.vmCli, a.pubIPCli, a.extCli, a.resourceSKUCli
+}
+
+func (a *AzureCli) SetClients(rgCli *armresources.ResourceGroupsClient, netCli *armnetwork.VirtualNetworksClient, subnetCli *armnetwork.SubnetsClient, nsgCli *armnetwork.SecurityGroupsClient, nicCli *armnetwork.InterfacesClient, vmCli *armcompute.VirtualMachinesClient, pubIPCli *armnetwork.PublicIPAddressesClient, extCli *armcompute.VirtualMachineExtensionsClient, skuCli *armcompute.ResourceSKUsClient) {
+	a.rgCli = rgCli
+	a.netCli = netCli
+	a.subnetCli = subnetCli
+	a.nsgCli = nsgCli
+	a.nicCli = nicCli
+	a.vmCli = vmCli
+	a.pubIPCli = pubIPCli
+	a.extCli = extCli
+	a.resourceSKUCli = skuCli
 }
 
 func (a *AzureCli) CreateResourceGroup(ctx context.Context, name string, tags map[string]*string) (*armresources.ResourceGroup, error) {
@@ -389,19 +421,19 @@ func (a *AzureCli) DeleteResourceGroup(ctx context.Context, resourceGroup string
 	return nil
 }
 
-func (a *AzureCli) GetInstance(ctx context.Context, rgName, vmName string) (armcompute.VirtualMachine, error) {
+func (a *AzureCli) GetInstance(ctx context.Context, vmName string) (armcompute.VirtualMachine, error) {
 	opts := &armcompute.VirtualMachinesClientGetOptions{
 		Expand: to.Ptr(armcompute.InstanceViewTypesInstanceView),
 	}
-	vm, err := a.vmCli.Get(ctx, rgName, rgName, opts)
+	vm, err := a.vmCli.Get(ctx, vmName, vmName, opts)
 	if err != nil {
 		return armcompute.VirtualMachine{}, fmt.Errorf("failed to get VM: %w", err)
 	}
 	return vm.VirtualMachine, nil
 }
 
-func (a *AzureCli) DealocateVM(ctx context.Context, rgName, vmName string) error {
-	poller, err := a.vmCli.BeginDeallocate(ctx, rgName, vmName, nil)
+func (a *AzureCli) DealocateVM(ctx context.Context, vmName string) error {
+	poller, err := a.vmCli.BeginDeallocate(ctx, vmName, vmName, nil)
 	if err != nil {
 		return fmt.Errorf("failed to dealocate VM: %w", err)
 	}

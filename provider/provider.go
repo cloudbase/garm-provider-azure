@@ -187,7 +187,7 @@ func (a *azureProvider) DeleteInstance(ctx context.Context, instance string) err
 
 // GetInstance will return details about one instance.
 func (a *azureProvider) GetInstance(ctx context.Context, instance string) (params.ProviderInstance, error) {
-	vm, err := a.azCli.GetInstance(ctx, instance, instance)
+	vm, err := a.azCli.GetInstance(ctx, instance)
 	if err != nil {
 		return params.ProviderInstance{}, fmt.Errorf("failed to get VM details: %w", err)
 	}
@@ -230,7 +230,7 @@ func (a *azureProvider) RemoveAllInstances(ctx context.Context) error {
 
 // Stop shuts down the instance.
 func (a *azureProvider) Stop(ctx context.Context, instance string, force bool) error {
-	return a.azCli.DealocateVM(ctx, instance, instance)
+	return a.azCli.DealocateVM(ctx, instance)
 }
 
 // Start boots up an instance.

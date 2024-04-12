@@ -17,12 +17,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/cloudbase/garm-provider-azure/internal/util"
 	"github.com/cloudbase/garm-provider-azure/provider"
 	"github.com/cloudbase/garm-provider-common/execution"
 )
@@ -36,16 +34,16 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), signals...)
 	defer stop()
 
-	util.SetupLogging()
-
 	executionEnv, err := execution.GetEnvironment()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Error getting environment: %q", err)
+		os.Exit(1)
 	}
 
 	prov, err := provider.NewAzureProvider(executionEnv.ProviderConfigFile, executionEnv.ControllerID)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Error creating provider: %q", err)
+		os.Exit(1)
 	}
 
 	result, err := execution.Run(ctx, prov, executionEnv)
