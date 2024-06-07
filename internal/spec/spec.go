@@ -116,6 +116,21 @@ const (
 					"type": "string",
 					"description": "The ID of the subnet to use for the VM. Must be in the same region as the VM. This is required if disable_isolated_networks is set to true, otherwise it is ignored."
 				},
+				"disable_updates": {
+					"type": "boolean",
+					"description": "Disable automatic updates on the VM."
+				},
+				"enable_boot_debug": {
+					"type": "boolean",
+					"description": "Enable boot debug on the VM."
+				},
+				"extra_packages": {
+					"type": "array",
+					"description": "Extra packages to install on the VM.",
+					"items": {
+						"type": "string"
+					}
+				},
 				"disable_isolated_networks": {
 					"type": "boolean",
 					"description": "Disable network isolation for the VM."
@@ -184,6 +199,9 @@ type extraSpecs struct {
 	UseAcceleratedNetworking *bool                                     `json:"use_accelerated_networking"`
 	VnetSubnetID             string                                    `json:"vnet_subnet_id"`
 	DisableIsolatedNetworks  *bool                                     `json:"disable_isolated_networks"`
+	DisableUpdates           *bool                                     `json:"disable_updates"`
+	EnableBootDebug          *bool                                     `json:"enable_boot_debug"`
+	ExtraPackages            []string                                  `json:"extra_packages"`
 }
 
 func (e *extraSpecs) cleanInboundPorts() {
@@ -285,6 +303,7 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 		UseAcceleratedNetworking: cfg.UseAcceleratedNetworking,
 		VnetSubnetID:             cfg.VnetSubnetID,
 		DisableIsolatedNetworks:  cfg.DisableIsolatedNetworks,
+		ExtraPackages:            extraSpecs.ExtraPackages,
 	}
 
 	if extraSpecs.UseEphemeralStorage != nil {
@@ -293,6 +312,14 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 
 	if extraSpecs.UseAcceleratedNetworking != nil {
 		spec.UseAcceleratedNetworking = *extraSpecs.UseAcceleratedNetworking
+	}
+
+	if extraSpecs.DisableUpdates != nil {
+		spec.DisableUpdates = *extraSpecs.DisableUpdates
+	}
+
+	if extraSpecs.EnableBootDebug != nil {
+		spec.EnableBootDebug = *extraSpecs.EnableBootDebug
 	}
 
 	if extraSpecs.DisableIsolatedNetworks != nil {
@@ -331,6 +358,9 @@ type RunnerSpec struct {
 	UseAcceleratedNetworking bool
 	VnetSubnetID             string
 	DisableIsolatedNetworks  bool
+	DisableUpdates           bool
+	ExtraPackages            []string
+	EnableBootDebug          bool
 }
 
 func (r RunnerSpec) Validate() error {
@@ -385,15 +415,19 @@ func (r RunnerSpec) ImageDetails() (providerUtil.ImageDetails, error) {
 }
 
 func (r RunnerSpec) ComposeUserData() ([]byte, error) {
+	bootstrapParams := r.BootstrapParams
+	bootstrapParams.UserDataOptions.DisableUpdatesOnBoot = r.DisableUpdates
+	bootstrapParams.UserDataOptions.ExtraPackages = r.ExtraPackages
+	bootstrapParams.UserDataOptions.EnableBootDebug = r.EnableBootDebug
 	switch r.BootstrapParams.OSType {
 	case params.Linux, params.Windows:
-		udata, err := cloudconfig.GetCloudConfig(r.BootstrapParams, r.Tools, r.BootstrapParams.Name)
+		udata, err := cloudconfig.GetCloudConfig(bootstrapParams, r.Tools, bootstrapParams.Name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate userdata: %w", err)
 		}
 		return []byte(udata), nil
 	}
-	return nil, fmt.Errorf("unsupported OS type for cloud config: %s", r.BootstrapParams.OSType)
+	return nil, fmt.Errorf("unsupported OS type for cloud config: %s", bootstrapParams.OSType)
 }
 
 func (r RunnerSpec) SecurityRules() []*armnetwork.SecurityRule {
