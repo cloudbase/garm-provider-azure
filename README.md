@@ -90,82 +90,112 @@ To this end, this provider supports the following extra specs schema:
 
 ```json
 {
-    "$schema": "http://cloudbase.it/garm-provider-azure/schemas/extra_specs#",
-    "type": "object",
-    "description": "Schema defining supported extra specs for the Garm Azure Provider",
-    "properties": {
-        "allocate_public_ip": {
-            "type": "boolean",
-            "description": "Allocate a public IP to the VM."
-        },
-        "confidential": {
-            "type": "boolean",
-            "description": "The selected virtual machine size is confidential."
-        },
-        "use_ephemeral_storage": {
-            "type": "boolean",
-            "description": "Use ephemeral storage for the VM."
-        },
-        "use_accelerated_networking": {
-            "type": "boolean",
-            "description": "Use accelerated networking for the VM."
-        },
-        "open_inbound_ports": {
-            "type": "object",
-            "description": "A map of protocol to list of inbound ports to open.",
-            "properties": {
-                "Tcp": {
-                    "type": "array",
-                    "description": "List of ports to open.",
-                    "items": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 65535
-                    }
-                },
-                "Udp": {
-                    "type": "array",
-                    "description": "List of ports to open.",
-                    "items": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 65535
-                    }
-                }
-            }
-        },
-        "storage_account_type": {
-            "type": "string",
-            "description": "Azure storage account type. Default is Standard_LRS."
-        },
-        "virtual_network_cidr": {
-            "type": "string",
-            "description": "The CIDR for the virtual network."
-        },
-        "disk_size_gb": {
-            "type": "integer",
-            "description": "The size of the root disk in GB. Default is 127 GB."
-        },
-        "extra_tags": {
-            "type": "object",
-            "description": "Extra tags that will get added to all VMs spawned in a pool."
-        },
-        "ssh_public_keys": {
-            "type": "array",
-            "description": "SSH public keys to add to the admin user on Linux runners.",
-            "items": {
-                "type": "string"
-            }
-        },
-        "vnet_subnet_id": {
-            "type": "string",
-            "description": "The ID of the subnet to use for the VM. Must be in the same region as the VM. This is required if disable_isolated_networks is set to true, otherwise it is ignored."
-        },
-        "disable_isolated_networks": {
-            "type": "boolean",
-            "description": "Disable network isolation for the VM."
-        }
-    },
+	"$schema": "http://cloudbase.it/garm-provider-azure/schemas/extra_specs#",
+	"type": "object",
+	"description": "Schema defining supported extra specs for the Garm Azure Provider",
+	"properties": {
+		"allocate_public_ip": {
+			"type": "boolean",
+			"description": "Allocate a public IP to the VM."
+		},
+		"confidential": {
+			"type": "boolean",
+			"description": "The selected virtual machine size is confidential."
+		},
+		"use_ephemeral_storage": {
+			"type": "boolean",
+			"description": "Use ephemeral storage for the VM."
+		},
+		"use_accelerated_networking": {
+			"type": "boolean",
+			"description": "Use accelerated networking for the VM."
+		},
+		"open_inbound_ports": {
+			"type": "object",
+			"description": "A map of protocol to list of inbound ports to open.",
+			"properties": {
+				"Tcp": {
+					"type": "array",
+					"description": "List of ports to open.",
+					"items": {
+						"type": "integer",
+						"minimum": 1,
+						"maximum": 65535
+					}
+				},
+				"Udp": {
+					"type": "array",
+					"description": "List of ports to open.",
+					"items": {
+						"type": "integer",
+						"minimum": 1,
+						"maximum": 65535
+					}
+				}
+			}
+		},
+		"storage_account_type": {
+			"type": "string",
+			"description": "Azure storage account type. Default is Standard_LRS."
+		},
+		"virtual_network_cidr": {
+			"type": "string",
+			"description": "The CIDR for the virtual network."
+		},
+		"disk_size_gb": {
+			"type": "integer",
+			"description": "The size of the root disk in GB. Default is 127 GB."
+		},
+		"extra_tags": {
+			"type": "object",
+			"description": "Extra tags that will get added to all VMs spawned in a pool."
+		},
+		"ssh_public_keys": {
+			"type": "array",
+			"description": "SSH public keys to add to the admin user on Linux runners.",
+			"items": {
+				"type": "string"
+			}
+		},
+		"vnet_subnet_id": {
+			"type": "string",
+			"description": "The ID of the subnet to use for the VM. Must be in the same region as the VM. This is required if disable_isolated_networks is set to true, otherwise it is ignored."
+		},
+		"disable_updates": {
+			"type": "boolean",
+			"description": "Disable automatic updates on the VM."
+		},
+		"enable_boot_debug": {
+			"type": "boolean",
+			"description": "Enable boot debug on the VM."
+		},
+		"extra_packages": {
+			"type": "array",
+			"description": "Extra packages to install on the VM.",
+			"items": {
+				"type": "string"
+			}
+		},
+		"runner_install_template": {
+			"type": "string",
+			"description": "This option can be used to override the default runner install template. If used, the caller is responsible for the correctness of the template as well as the suitability of the template for the target OS. Use the extra_context extra spec if your template has variables in it that need to be expanded."
+		},
+		"extra_context": {
+			"type": "object",
+			"description": "Extra context that will be passed to the runner_install_template.",
+			"additionalProperties": {
+				"type": "string"
+			}
+		},
+		"pre_install_scripts": {
+			"type": "object",
+			"description": "A map of pre-install scripts that will be run before the runner install script. These will run as root and can be used to prep a generic image before we attempt to install the runner. The key of the map is the name of the script as it will be written to disk. The value is a byte array with the contents of the script."
+		},
+		"disable_isolated_networks": {
+			"type": "boolean",
+			"description": "Disable network isolation for the VM."
+		}
+	},
 	"additionalProperties": false
 }
 ```
