@@ -646,6 +646,9 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string, sizeSpec VMSiz
 	}
 
 	if r.BootstrapParams.OSType == params.Linux {
+		// Linux computer names can be up to 63 characters long.
+		properties.OSProfile.ComputerName = to.Ptr(r.BootstrapParams.Name[:min(len(r.BootstrapParams.Name), 63)])
+
 		pubKeys := []*armcompute.SSHPublicKey{}
 		fakeKey, err := providerUtil.GenerateFakeKey()
 		if err == nil {
