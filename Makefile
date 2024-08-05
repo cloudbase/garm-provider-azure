@@ -8,19 +8,24 @@ IMAGE_TAG = garm-provider-azure-build
 
 USER_ID=$(shell ((docker --version | grep -q podman) && echo "0" || id -u))
 USER_GROUP=$(shell ((docker --version | grep -q podman) && echo "0" || id -g))
+GARM_PROVIDER_NAME := "garm-provider-azure"
 
 default: build
 
-.PHONY : build build-static test install-lint-deps lint go-test fmt fmtcheck verify-vendor verify
+.PHONY : build build-static test install-lint-deps lint go-test fmt fmtcheck verify-vendor verify create-release-files release
 
 build:
 	@$(GO) build .
 
+clean: ## Clean up build artifacts
+	@rm -rf ./bin ./build ./release
+
 build-static:
 	@echo Building
 	docker build --tag $(IMAGE_TAG) .
-	docker run --rm -e USER_ID=$(USER_ID) -e USER_GROUP=$(USER_GROUP) -v $(PWD):/build/garm-provider-azure:z $(IMAGE_TAG) /build-static.sh
-	@echo Binaries are available in $(PWD)/bin
+	mkdir -p build
+	docker run --rm -e USER_ID=$(USER_ID) -e USER_GROUP=$(USER_GROUP) -v $(PWD)/build:/build/output:z -v $(PWD):/build/garm-provider-azure:z $(IMAGE_TAG) /build-static.sh
+	@echo Binaries are available in $(PWD)/build
 
 test: verify go-test
 
@@ -47,3 +52,9 @@ verify-vendor: ## verify if all the go.mod/go.sum files are up-to-date
 	@rm -rf ${TMPDIR}
 
 verify: verify-vendor lint fmtcheck
+
+##@ Release
+create-release-files:
+	./scripts/make-release.sh
+
+release: build-static create-release-files ## Create a release
