@@ -4,11 +4,11 @@ ROOTDIR=$(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 GOPATH ?= $(shell go env GOPATH)
 GO ?= go
 
-IMAGE_TAG = garm-provider-azure-build
+IMAGE_TAG = garm-provider-build
 
 USER_ID=$(shell ((docker --version | grep -q podman) && echo "0" || id -u))
 USER_GROUP=$(shell ((docker --version | grep -q podman) && echo "0" || id -g))
-GARM_PROVIDER_NAME := "garm-provider-azure"
+GARM_PROVIDER_NAME := garm-provider-azure
 
 default: build
 
@@ -24,10 +24,10 @@ build-static:
 	@echo Building
 	docker build --tag $(IMAGE_TAG) .
 	mkdir -p build
-	docker run --rm -e USER_ID=$(USER_ID) -e USER_GROUP=$(USER_GROUP) -v $(PWD)/build:/build/output:z -v $(PWD):/build/garm-provider-azure:z $(IMAGE_TAG) /build-static.sh
+	docker run --rm -e GARM_PROVIDER_NAME=$(GARM_PROVIDER_NAME) -e USER_ID=$(USER_ID) -e USER_GROUP=$(USER_GROUP) -v $(PWD)/build:/build/output:z -v $(PWD):/build/$(GARM_PROVIDER_NAME):z $(IMAGE_TAG) /build-static.sh
 	@echo Binaries are available in $(PWD)/build
 
-test: verify go-test
+test: install-lint-deps verify go-test
 
 install-lint-deps:
 	@$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
@@ -42,13 +42,13 @@ fmt:
 	@$(GO) fmt $$(go list ./...)
 
 fmtcheck:
-	@gofmt -l -s $$(go list ./... | sed -n 's/github.com\/cloudbase\/garm-provider-azure\/\(.*\)/\1/p') | grep ".*\.go"; if [ "$$?" -eq 0 ]; then echo "gofmt check failed; please tun gofmt -w -s"; exit 1;fi
+	@gofmt -l -s $$(go list ./... | sed -n 's/github.com\/cloudbase\/'$(GARM_PROVIDER_NAME)'\/\(.*\)/\1/p') | grep ".*\.go"; if [ "$$?" -eq 0 ]; then echo "gofmt check failed; please tun gofmt -w -s"; exit 1;fi
 
 verify-vendor: ## verify if all the go.mod/go.sum files are up-to-date
 	$(eval TMPDIR := $(shell mktemp -d))
 	@cp -R ${ROOTDIR} ${TMPDIR}
-	@(cd ${TMPDIR}/garm-provider-azure && ${GO} mod tidy)
-	@diff -r -u -q ${ROOTDIR} ${TMPDIR}/garm-provider-azure >/dev/null 2>&1; if [ "$$?" -ne 0 ];then echo "please run: go mod tidy && go mod vendor"; exit 1; fi
+	@(cd ${TMPDIR}/$(GARM_PROVIDER_NAME) && ${GO} mod tidy)
+	@diff -r -u -q ${ROOTDIR} ${TMPDIR}/$(GARM_PROVIDER_NAME) >/dev/null 2>&1; if [ "$$?" -ne 0 ];then echo "please run: go mod tidy && go mod vendor"; exit 1; fi
 	@rm -rf ${TMPDIR}
 
 verify: verify-vendor lint fmtcheck
