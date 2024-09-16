@@ -23,11 +23,13 @@ import (
 	"github.com/cloudbase/garm-provider-azure/internal/spec"
 	"github.com/cloudbase/garm-provider-azure/internal/util"
 
-	"github.com/cloudbase/garm-provider-common/execution"
+	execution "github.com/cloudbase/garm-provider-common/execution/v0.1.0"
 	"github.com/cloudbase/garm-provider-common/params"
 )
 
 var _ execution.ExternalProvider = &azureProvider{}
+
+var Version = "v0.0.0-unknown"
 
 func NewAzureProvider(configPath, controllerID string) (execution.ExternalProvider, error) {
 	conf, err := config.NewConfig(configPath)
@@ -236,4 +238,9 @@ func (a *azureProvider) Stop(ctx context.Context, instance string, force bool) e
 // Start boots up an instance.
 func (a *azureProvider) Start(ctx context.Context, instance string) error {
 	return a.azCli.StartVM(ctx, instance)
+}
+
+// GetVersion returns the version of the provider.
+func (a *azureProvider) GetVersion(ctx context.Context) string {
+	return Version
 }
