@@ -22,184 +22,47 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v5"
 	"github.com/cloudbase/garm-provider-azure/config"
+	"github.com/cloudbase/garm-provider-common/cloudconfig"
 	"github.com/cloudbase/garm-provider-common/params"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestJsonSchemaValidation(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     json.RawMessage
-		errString string
-	}{
-		{
-			name: "valid extraSpecs",
-			input: json.RawMessage(`{
-				"allocate_public_ip": true,
-				"confidential": true,
-				"use_ephemeral_storage": true,
-				"use_accelerated_networking": true,
-				"open_inbound_ports": {
-					"Tcp": [22, 80],
-					"Udp": [53]
-				},
-				"storage_account_type": "Standard_LRS",
-				"virtual_network_cidr": "10.10.0.0/16",
-				"disk_size_gb": 128,
-				"extra_tags": {
-					"tag1": "value1",
-					"tag2": "value2"
-				},
-				"ssh_public_keys": ["ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDfz1z7"],
-				"vnet_subnet_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default",
-				"disable_isolated_networks": true
-			}`),
-			errString: "",
-		},
-		{
-			name: "bad input for use ephemeral storage",
-			input: json.RawMessage(`{
-				"allocate_public_ip": true,
-				"confidential": true,
-				"use_ephemeral_storage": "true",
-				"use_accelerated_networking": true,
-				"open_inbound_ports": {
-					"Tcp": [22, 80],
-					"Udp": [53]
-				},
-				"storage_account_type": "Standard_LRS",
-				"virtual_network_cidr": "10.10.0.0/16",
-				"disk_size_gb": 128,
-				"extra_tags": {
-					"tag1": "value1",
-					"tag2": "value2"
-				},
-				"ssh_public_keys": ["ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDfz1z7"],
-				"vnet_subnet_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default",
-				"disable_isolated_networks": true
-			}`),
-			errString: "Expected: boolean, given: string",
-		},
-		{
-			name: "Bad schema format",
-			input: json.RawMessage(`{
-				"allocate_public_ip": true,
-				"confidential": true,
-				"use_ephemeral_storage": true,
-				"use_accelerated_networking": true,
-				"open_inbound_ports": {
-					"Tcp": [22, 80],
-					"Udp": [53],
-				},
-				"storage_account_type": "Standard_LRS",
-				"virtual_network_cidr": "10.10.0.0/16",
-				"disk_size_gb": 128,
-				"extra_tags": {
-					"tag1": "value1",
-					"tag2": "value2"
-				},
-				"ssh_public_keys": ["ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDfz1z7"],
-				"vnet_subnet_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default",
-				"disable_isolated_networks": true
-			}`),
-			errString: "invalid character '}' looking for beginning of object key string",
-		},
-		{
-			name:      "empty input",
-			input:     json.RawMessage(`{}`),
-			errString: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := jsonSchemaValidation(tt.input)
-			if tt.errString == "" {
-				require.NoError(t, err)
-			} else {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errString)
-			}
-		})
-	}
-}
-
 func TestNewExtraSpecsFromBootstrapData(t *testing.T) {
 	tests := []struct {
 		name      string
-		input     params.BootstrapInstance
+		input     json.RawMessage
 		want      *extraSpecs
 		errString string
 	}{
 		{
-			name: "empty BootstrapData - no extra specs",
-			input: params.BootstrapInstance{
-				Name:          "test-instance",
-				InstanceToken: "test-token",
-				OSArch:        params.Amd64,
-				OSType:        params.Linux,
-				Image:         "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest",
-				Flavor:        "Standard_DS13_v2",
-				Tools: []params.RunnerApplicationDownload{
-					{
-						OS:                to.Ptr("linux"),
-						Architecture:      to.Ptr("x64"),
-						DownloadURL:       to.Ptr("http://test.com"),
-						Filename:          to.Ptr("runner.tar.gz"),
-						SHA256Checksum:    to.Ptr("sha256:1123"),
-						TempDownloadToken: to.Ptr("test-token"),
-					},
-				},
-				ExtraSpecs: json.RawMessage(`{}`),
-			},
-			want: &extraSpecs{
-				OpenInboundPorts:   map[armnetwork.SecurityRuleProtocol][]int{},
-				StorageAccountType: "Standard_LRS",
-				ExtraTags:          map[string]string{},
-			},
-			errString: "",
-		},
-		{
 			name: "extra specs with all fields",
-			input: params.BootstrapInstance{
-				Name:          "test-instance",
-				InstanceToken: "test-token",
-				OSArch:        params.Amd64,
-				OSType:        params.Linux,
-				Image:         "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest",
-				Flavor:        "Standard_DS13_v2",
-				Tools: []params.RunnerApplicationDownload{
-					{
-						OS:                to.Ptr("linux"),
-						Architecture:      to.Ptr("x64"),
-						DownloadURL:       to.Ptr("http://test.com"),
-						Filename:          to.Ptr("runner.tar.gz"),
-						SHA256Checksum:    to.Ptr("sha256:1123"),
-						TempDownloadToken: to.Ptr("test-token"),
-					},
+			input: json.RawMessage(`{
+				"allocate_public_ip": true,
+				"confidential": true,
+				"use_ephemeral_storage": true,
+				"use_accelerated_networking": true,
+				"open_inbound_ports": {
+					"Tcp": [22, 80],
+					"Udp": [53]
 				},
-				ExtraSpecs: json.RawMessage(`{
-					"allocate_public_ip": true,
-					"confidential": true,
-					"use_ephemeral_storage": true,
-					"use_accelerated_networking": true,
-					"open_inbound_ports": {
-						"Tcp": [22, 80],
-						"Udp": [53]
-					},
-					"storage_account_type": "Standard_LRS",
-					"virtual_network_cidr": "10.10.0.0/16",
-					"disk_size_gb": 128,
-					"extra_tags": {
-						"tag1": "value1",
-						"tag2": "value2"
-					},
-					"ssh_public_keys": ["ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDfz1z7"],
-					"vnet_subnet_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default",
-					"disable_isolated_networks": true
-				}`),
-			},
+				"storage_account_type": "Standard_LRS",
+				"virtual_network_cidr": "10.10.0.0/16",
+				"disk_size_gb": 128,
+				"extra_tags": {
+					"tag1": "value1",
+					"tag2": "value2"
+				},
+				"ssh_public_keys": ["ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDfz1z7"],
+				"vnet_subnet_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default",
+				"disable_isolated_networks": true,
+				"disable_updates": true,
+				"enable_boot_debug": true,
+				"extra_packages": ["package1", "package2"],
+				"runner_install_template": "IyEvYmluL2Jhc2gKZWNobyBJbnN0YWxsaW5nIHJ1bm5lci4uLg==",
+				"pre_install_scripts": {"setup.sh": "IyEvYmluL2Jhc2gKZWNobyBTZXR1cCBzY3JpcHQuLi4="},
+				"extra_context": {"key": "value"}
+			}`),
 			want: &extraSpecs{
 				AllocatePublicIP:         true,
 				Confidential:             true,
@@ -219,40 +82,197 @@ func TestNewExtraSpecsFromBootstrapData(t *testing.T) {
 				SSHPublicKeys:           []string{"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDfz1z7"},
 				VnetSubnetID:            "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default",
 				DisableIsolatedNetworks: to.Ptr(true),
+				DisableUpdates:          to.Ptr(true),
+				EnableBootDebug:         to.Ptr(true),
+				ExtraPackages:           []string{"package1", "package2"},
+				CloudConfigSpec: cloudconfig.CloudConfigSpec{
+					RunnerInstallTemplate: []byte("#!/bin/bash\necho Installing runner..."),
+					PreInstallScripts: map[string][]byte{
+						"setup.sh": []byte("#!/bin/bash\necho Setup script..."),
+					},
+					ExtraContext: map[string]string{"key": "value"},
+				},
 			},
 			errString: "",
 		},
 		{
-			name: "bad input for use ephemeral storage",
-			input: params.BootstrapInstance{
-				Name:          "test-instance",
-				InstanceToken: "test-token",
-				OSArch:        params.Amd64,
-				OSType:        params.Linux,
-				Image:         "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest",
-				Flavor:        "Standard_DS13_v2",
-				Tools: []params.RunnerApplicationDownload{
-					{
-						OS:                to.Ptr("linux"),
-						Architecture:      to.Ptr("x64"),
-						DownloadURL:       to.Ptr("http://test.com"),
-						Filename:          to.Ptr("runner.tar.gz"),
-						SHA256Checksum:    to.Ptr("sha256:1123"),
-						TempDownloadToken: to.Ptr("test-token"),
-					},
-				},
-				ExtraSpecs: json.RawMessage(`{
-					"use_ephemeral_storage": "broken"
-				}`),
+			name:  "empty BootstrapData - no extra specs",
+			input: json.RawMessage(`{}`),
+			want: &extraSpecs{
+				OpenInboundPorts:   map[armnetwork.SecurityRuleProtocol][]int{},
+				StorageAccountType: "Standard_LRS",
+				ExtraTags:          map[string]string{},
 			},
+			errString: "",
+		},
+		{
+			name: "invalid json",
+			input: json.RawMessage(`{
+				"allocate_public_ip":
+			}`),
 			want:      nil,
-			errString: "Expected: boolean, given: string",
+			errString: "failed to validate extra specs",
+		},
+		{
+			name: "invalid input - allocate_public_ip - wrong data type",
+			input: json.RawMessage(`{
+				"allocate_public_ip": "true"
+			}`),
+			want:      nil,
+			errString: "allocate_public_ip: Invalid type. Expected: boolean, given: string",
+		},
+		{
+			name: "invalid input - open_inbound_ports - wrong data type",
+			input: json.RawMessage(`{
+				"open_inbound_ports": "true"
+			}`),
+			want:      nil,
+			errString: "open_inbound_ports: Invalid type. Expected: object, given: string",
+		},
+		{
+			name: "invalid input - StorageAccountType - wrong data type",
+			input: json.RawMessage(`{
+				"storage_account_type": true
+			}`),
+			want:      nil,
+			errString: "storage_account_type: Invalid type. Expected: string, given: boolean",
+		},
+		{
+			name: "invalid input - DiskSizeGB - wrong data type",
+			input: json.RawMessage(`{
+				"disk_size_gb": "128"
+			}`),
+			want:      nil,
+			errString: "disk_size_gb: Invalid type. Expected: integer, given: string",
+		},
+		{
+			name: "invalid input - ExtraTags - wrong data type",
+			input: json.RawMessage(`{
+				"extra_tags": ["tag1", "value1"]
+			}`),
+			want:      nil,
+			errString: "extra_tags: Invalid type. Expected: object, given: array",
+		},
+		{
+			name: "invalid input - SSHPublicKeys - wrong data type",
+			input: json.RawMessage(`{
+				"ssh_public_keys": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDfz1z7"
+			}`),
+			want:      nil,
+			errString: "ssh_public_keys: Invalid type. Expected: array, given: string",
+		},
+		{
+			name: "invalid input - Confidential - wrong data type",
+			input: json.RawMessage(`{
+				"confidential": "true"
+			}`),
+			want:      nil,
+			errString: "confidential: Invalid type. Expected: boolean, given: string",
+		},
+		{
+			name: "invalid input - UseEphemeralStorage - wrong data type",
+			input: json.RawMessage(`{
+				"use_ephemeral_storage": "true"
+			}`),
+			want:      nil,
+			errString: "use_ephemeral_storage: Invalid type. Expected: boolean, given: string",
+		},
+		{
+			name: "invalid input - VirtualNetworkCIDR - wrong data type",
+			input: json.RawMessage(`{
+				"virtual_network_cidr": true
+			}`),
+			want:      nil,
+			errString: "virtual_network_cidr: Invalid type. Expected: string, given: boolean",
+		},
+		{
+			name: "invalid input - UseAcceleratedNetworking - wrong data type",
+			input: json.RawMessage(`{
+				"use_accelerated_networking": "true"
+			}`),
+			want:      nil,
+			errString: "use_accelerated_networking: Invalid type. Expected: boolean, given: string",
+		},
+		{
+			name: "invalid input - VnetSubnetID - wrong data type",
+			input: json.RawMessage(`{
+				"vnet_subnet_id": true
+			}`),
+			want:      nil,
+			errString: "vnet_subnet_id: Invalid type. Expected: string, given: boolean",
+		},
+		{
+			name: "invalid input - DisableIsolatedNetworks - wrong data type",
+			input: json.RawMessage(`{
+				"disable_isolated_networks": "true"
+			}`),
+			want:      nil,
+			errString: "disable_isolated_networks: Invalid type. Expected: boolean, given: string",
+		},
+		{
+			name: "invalid input - DisableUpdates - wrong data type",
+			input: json.RawMessage(`{
+				"disable_updates": "true"
+			}`),
+			want:      nil,
+			errString: "disable_updates: Invalid type. Expected: boolean, given: string",
+		},
+		{
+			name: "invalid input - EnableBootDebug - wrong data type",
+			input: json.RawMessage(`{
+				"enable_boot_debug": "true"
+			}`),
+			want:      nil,
+			errString: "enable_boot_debug: Invalid type. Expected: boolean, given: string",
+		},
+		{
+			name: "invalid input - RunnerInstallTemplate - wrong data type",
+			input: json.RawMessage(`{
+				"runner_install_template": true
+			}`),
+			want:      nil,
+			errString: "runner_install_template: Invalid type. Expected: string, given: boolean",
+		},
+		{
+			name: "invalid input - PreInstallScripts - wrong data type",
+			input: json.RawMessage(`{
+				"pre_install_scripts": true
+			}`),
+			want:      nil,
+			errString: "pre_install_scripts: Invalid type. Expected: object, given: boolean",
+		},
+		{
+			name: "invalid input - ExtraContext - wrong data type",
+			input: json.RawMessage(`{
+				"extra_context": true
+			}`),
+			want:      nil,
+			errString: "extra_context: Invalid type. Expected: object, given: boolean",
 		},
 	}
 
 	for _, tt := range tests {
+		input := params.BootstrapInstance{
+			Name:          "test-instance",
+			InstanceToken: "test-token",
+			OSArch:        params.Amd64,
+			OSType:        params.Linux,
+			Image:         "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest",
+			Flavor:        "Standard_DS13_v2",
+			Tools: []params.RunnerApplicationDownload{
+				{
+					OS:                to.Ptr("linux"),
+					Architecture:      to.Ptr("x64"),
+					DownloadURL:       to.Ptr("http://test.com"),
+					Filename:          to.Ptr("runner.tar.gz"),
+					SHA256Checksum:    to.Ptr("sha256:1123"),
+					TempDownloadToken: to.Ptr("test-token"),
+				},
+			},
+			ExtraSpecs: tt.input,
+		}
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := newExtraSpecsFromBootstrapData(tt.input)
+			got, err := newExtraSpecsFromBootstrapData(input)
 			if tt.errString == "" {
 				require.NoError(t, err)
 			} else {

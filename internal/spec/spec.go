@@ -29,6 +29,7 @@ import (
 	appdefaults "github.com/cloudbase/garm-provider-common/defaults"
 	"github.com/cloudbase/garm-provider-common/params"
 	"github.com/cloudbase/garm-provider-common/util"
+	"github.com/invopop/jsonschema"
 	"github.com/xeipuuv/gojsonschema"
 	"golang.org/x/crypto/ssh"
 
@@ -43,121 +44,21 @@ const (
 	defaultDiskSizeGB             int32  = 127
 	defaultVirtualNetworkCIDR     string = "10.10.0.0/16"
 	defaultEphemeralDiskPlacement string = "ResourceDisk"
-	jsonSchema                    string = `
-		{
-			"$schema": "http://cloudbase.it/garm-provider-azure/schemas/extra_specs#",
-			"type": "object",
-			"description": "Schema defining supported extra specs for the Garm Azure Provider",
-			"properties": {
-				"allocate_public_ip": {
-					"type": "boolean",
-					"description": "Allocate a public IP to the VM."
-				},
-				"confidential": {
-					"type": "boolean",
-					"description": "The selected virtual machine size is confidential."
-				},
-				"use_ephemeral_storage": {
-					"type": "boolean",
-					"description": "Use ephemeral storage for the VM."
-				},
-				"use_accelerated_networking": {
-					"type": "boolean",
-					"description": "Use accelerated networking for the VM."
-				},
-				"open_inbound_ports": {
-					"type": "object",
-					"description": "A map of protocol to list of inbound ports to open.",
-					"properties": {
-						"Tcp": {
-							"type": "array",
-							"description": "List of ports to open.",
-							"items": {
-								"type": "integer",
-								"minimum": 1,
-								"maximum": 65535
-							}
-						},
-						"Udp": {
-							"type": "array",
-							"description": "List of ports to open.",
-							"items": {
-								"type": "integer",
-								"minimum": 1,
-								"maximum": 65535
-							}
-						}
-					}
-				},
-				"storage_account_type": {
-					"type": "string",
-					"description": "Azure storage account type. Default is Standard_LRS."
-				},
-				"virtual_network_cidr": {
-					"type": "string",
-					"description": "The CIDR for the virtual network."
-				},
-				"disk_size_gb": {
-					"type": "integer",
-					"description": "The size of the root disk in GB. Default is 127 GB."
-				},
-				"extra_tags": {
-					"type": "object",
-					"description": "Extra tags that will get added to all VMs spawned in a pool."
-				},
-				"ssh_public_keys": {
-					"type": "array",
-					"description": "SSH public keys to add to the admin user on Linux runners.",
-					"items": {
-						"type": "string"
-					}
-				},
-				"vnet_subnet_id": {
-					"type": "string",
-					"description": "The ID of the subnet to use for the VM. Must be in the same region as the VM. This is required if disable_isolated_networks is set to true, otherwise it is ignored."
-				},
-				"disable_updates": {
-					"type": "boolean",
-					"description": "Disable automatic updates on the VM."
-				},
-				"enable_boot_debug": {
-					"type": "boolean",
-					"description": "Enable boot debug on the VM."
-				},
-				"extra_packages": {
-					"type": "array",
-					"description": "Extra packages to install on the VM.",
-					"items": {
-						"type": "string"
-					}
-				},
-				"runner_install_template": {
-					"type": "string",
-					"description": "This option can be used to override the default runner install template. If used, the caller is responsible for the correctness of the template as well as the suitability of the template for the target OS. Use the extra_context extra spec if your template has variables in it that need to be expanded."
-				},
-				"extra_context": {
-					"type": "object",
-					"description": "Extra context that will be passed to the runner_install_template.",
-					"additionalProperties": {
-						"type": "string"
-					}
-				},
-				"pre_install_scripts": {
-					"type": "object",
-					"description": "A map of pre-install scripts that will be run before the runner install script. These will run as root and can be used to prep a generic image before we attempt to install the runner. The key of the map is the name of the script as it will be written to disk. The value is a byte array with the contents of the script."
-				},
-				"disable_isolated_networks": {
-					"type": "boolean",
-					"description": "Disable network isolation for the VM."
-				}
-			},
-			"additionalProperties": false
-		}
-	`
 )
 
+func generateJSONSchema() *jsonschema.Schema {
+	reflector := jsonschema.Reflector{
+		AllowAdditionalProperties: false,
+	}
+	// Reflect the extraSpecs struct
+	schema := reflector.Reflect(extraSpecs{})
+
+	return schema
+}
+
 func jsonSchemaValidation(schema json.RawMessage) error {
-	schemaLoader := gojsonschema.NewStringLoader(jsonSchema)
+	jsonSchema := generateJSONSchema()
+	schemaLoader := gojsonschema.NewGoLoader(jsonSchema)
 	extraSpecsLoader := gojsonschema.NewBytesLoader(schema)
 	result, err := gojsonschema.Validate(schemaLoader, extraSpecsLoader)
 	if err != nil {
@@ -202,21 +103,23 @@ func newExtraSpecsFromBootstrapData(data params.BootstrapInstance) (*extraSpecs,
 }
 
 type extraSpecs struct {
-	AllocatePublicIP         bool                                      `json:"allocate_public_ip"`
-	OpenInboundPorts         map[armnetwork.SecurityRuleProtocol][]int `json:"open_inbound_ports"`
-	StorageAccountType       armcompute.StorageAccountTypes            `json:"storage_account_type"`
-	DiskSizeGB               int32                                     `json:"disk_size_gb"`
-	ExtraTags                map[string]string                         `json:"extra_tags"`
-	SSHPublicKeys            []string                                  `json:"ssh_public_keys"`
-	Confidential             bool                                      `json:"confidential"`
-	UseEphemeralStorage      *bool                                     `json:"use_ephemeral_storage"`
-	VirtualNetworkCIDR       string                                    `json:"virtual_network_cidr"`
-	UseAcceleratedNetworking *bool                                     `json:"use_accelerated_networking"`
-	VnetSubnetID             string                                    `json:"vnet_subnet_id"`
-	DisableIsolatedNetworks  *bool                                     `json:"disable_isolated_networks"`
-	DisableUpdates           *bool                                     `json:"disable_updates"`
-	EnableBootDebug          *bool                                     `json:"enable_boot_debug"`
-	ExtraPackages            []string                                  `json:"extra_packages"`
+	AllocatePublicIP         bool                                      `json:"allocate_public_ip,omitempty" jsonschema:"description=Allocate a public IP to the VM."`
+	OpenInboundPorts         map[armnetwork.SecurityRuleProtocol][]int `json:"open_inbound_ports,omitempty" jsonschema:"description=A map of protocol to list of inbound ports to open."`
+	StorageAccountType       armcompute.StorageAccountTypes            `json:"storage_account_type,omitempty" jsonschema:"description=Azure storage account type. Default is Standard_LRS."`
+	DiskSizeGB               int32                                     `json:"disk_size_gb,omitempty" jsonschema:"description=The size of the root disk in GB. Default is 127 GB."`
+	ExtraTags                map[string]string                         `json:"extra_tags,omitempty" jsonschema:"description=Extra tags that will get added to all VMs spawned in a pool."`
+	SSHPublicKeys            []string                                  `json:"ssh_public_keys,omitempty" jsonschema:"description=SSH public keys to add to the admin user on Linux runners."`
+	Confidential             bool                                      `json:"confidential,omitempty" jsonschema:"description=The selected virtual machine size is confidential."`
+	UseEphemeralStorage      *bool                                     `json:"use_ephemeral_storage,omitempty" jsonschema:"description=Use ephemeral storage for the VM."`
+	VirtualNetworkCIDR       string                                    `json:"virtual_network_cidr,omitempty" jsonschema:"description=The CIDR for the virtual network."`
+	UseAcceleratedNetworking *bool                                     `json:"use_accelerated_networking,omitempty" jsonschema:"description=Use accelerated networking for the VM."`
+	VnetSubnetID             string                                    `json:"vnet_subnet_id,omitempty" jsonschema:"description=The ID of the subnet to use for the VM. Must be in the same region as the VM. This is required if disable_isolated_networks is set to true, otherwise it is ignored."`
+	DisableIsolatedNetworks  *bool                                     `json:"disable_isolated_networks,omitempty" jsonschema:"description=Disable network isolation for the VM."`
+	DisableUpdates           *bool                                     `json:"disable_updates,omitempty" jsonschema:"description=Disable automatic updates on the VM."`
+	EnableBootDebug          *bool                                     `json:"enable_boot_debug,omitempty" jsonschema:"description=Enable boot debug on the VM."`
+	ExtraPackages            []string                                  `json:"extra_packages,omitempty" jsonschema:"description=Extra packages to install on the VM."`
+	// The Cloudconfig struct from common package
+	cloudconfig.CloudConfigSpec
 }
 
 func (e *extraSpecs) cleanInboundPorts() {
