@@ -391,7 +391,6 @@ func (r RunnerSpec) GetVMExtension(location, extName string) (*armcompute.Virtua
 				"displayName": to.Ptr(extName),
 			},
 			Type: to.Ptr("Microsoft.Compute/virtualMachines/extensions"),
-			Name: to.Ptr(fmt.Sprintf("%s/%s", r.BootstrapParams.Name, extName)),
 			Properties: &armcompute.VirtualMachineExtensionProperties{
 				Publisher:          to.Ptr("Microsoft.Compute"),
 				Type:               to.Ptr("CustomScriptExtension"),
