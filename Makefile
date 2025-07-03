@@ -6,8 +6,9 @@ GO ?= go
 
 IMAGE_TAG = garm-provider-build
 
-USER_ID=$(shell ((docker --version | grep -q podman) && echo "0" || id -u))
-USER_GROUP=$(shell ((docker --version | grep -q podman) && echo "0" || id -g))
+IMAGE_BUILDER=$(shell (which docker || which podman))
+USER_ID=$(shell (($(IMAGE_BUILDER) --version | grep -q podman) && echo "0" || id -u))
+USER_GROUP=$(shell (($(IMAGE_BUILDER) --version | grep -q podman) && echo "0" || id -g))
 GARM_PROVIDER_NAME := garm-provider-azure
 
 default: build
@@ -22,9 +23,9 @@ clean: ## Clean up build artifacts
 
 build-static:
 	@echo Building
-	docker build --tag $(IMAGE_TAG) .
+	$(IMAGE_BUILDER) build --tag $(IMAGE_TAG) .
 	mkdir -p build
-	docker run --rm -e GARM_PROVIDER_NAME=$(GARM_PROVIDER_NAME) -e USER_ID=$(USER_ID) -e USER_GROUP=$(USER_GROUP) -v $(PWD)/build:/build/output:z -v $(PWD):/build/$(GARM_PROVIDER_NAME):z $(IMAGE_TAG) /build-static.sh
+	$(IMAGE_BUILDER) run --rm -e GARM_PROVIDER_NAME=$(GARM_PROVIDER_NAME) -e USER_ID=$(USER_ID) -e USER_GROUP=$(USER_GROUP) -v $(PWD)/build:/build/output:z -v $(PWD):/build/$(GARM_PROVIDER_NAME):z -v /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt $(IMAGE_TAG) /build-static.sh
 	@echo Binaries are available in $(PWD)/build
 
 test: install-lint-deps verify go-test
