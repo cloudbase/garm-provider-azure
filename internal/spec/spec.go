@@ -110,6 +110,7 @@ type extraSpecs struct {
 	ExtraTags                map[string]string                         `json:"extra_tags,omitempty" jsonschema:"description=Extra tags that will get added to all VMs spawned in a pool."`
 	SSHPublicKeys            []string                                  `json:"ssh_public_keys,omitempty" jsonschema:"description=SSH public keys to add to the admin user on Linux runners."`
 	Confidential             bool                                      `json:"confidential,omitempty" jsonschema:"description=The selected virtual machine size is confidential."`
+	TrustedLaunch            bool                                      `json:"trustedlaunch,omitempty" jsonschema:"description=The selected virtual machine uses TrustedLaunch."`
 	UseEphemeralStorage      *bool                                     `json:"use_ephemeral_storage,omitempty" jsonschema:"description=Use ephemeral storage for the VM."`
 	VirtualNetworkCIDR       string                                    `json:"virtual_network_cidr,omitempty" jsonschema:"description=The CIDR for the virtual network."`
 	UseAcceleratedNetworking *bool                                     `json:"use_accelerated_networking,omitempty" jsonschema:"description=Use accelerated networking for the VM."`
@@ -216,6 +217,7 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 		Tools:                    tools,
 		Tags:                     tags,
 		Confidential:             extraSpecs.Confidential,
+		TrustedLaunch:            extraSpecs.TrustedLaunch,
 		UseEphemeralStorage:      cfg.UseEphemeralStorage,
 		VirtualNetworkCIDR:       virtualNetworkCIDR,
 		UseAcceleratedNetworking: cfg.UseAcceleratedNetworking,
@@ -271,6 +273,7 @@ type RunnerSpec struct {
 	Tags                     map[string]*string
 	SSHPublicKeys            []string
 	Confidential             bool
+	TrustedLaunch            bool
 	UseEphemeralStorage      bool
 	VirtualNetworkCIDR       string
 	UseAcceleratedNetworking bool
@@ -433,20 +436,32 @@ func (r RunnerSpec) managedDiskSettings() *armcompute.ManagedDiskParameters {
 }
 
 func (r RunnerSpec) securityProfile() *armcompute.SecurityProfile {
-	// There are limitations based on OS, region and VM size. Too many variables
-	// to sanely permit confidential VMs with ephemeral storage.
-	if !r.Confidential || r.UseEphemeralStorage {
-		return nil
+	if r.Confidential {
+		// There are limitations based on OS, region and VM size. Too many variables
+		// to sanely permit confidential VMs with ephemeral storage.
+		if r.UseEphemeralStorage {
+			return nil
+		}
+		return &armcompute.SecurityProfile{
+			SecurityType: to.Ptr(armcompute.SecurityTypesConfidentialVM),
+			UefiSettings: &armcompute.UefiSettings{
+				SecureBootEnabled: to.Ptr(true),
+				VTpmEnabled:       to.Ptr(true),
+			},
+		}
+	} else {
+		if r.TrustedLaunch {
+			return &armcompute.SecurityProfile{
+				SecurityType: to.Ptr(armcompute.SecurityTypesTrustedLaunch),
+				UefiSettings: &armcompute.UefiSettings{
+					SecureBootEnabled: to.Ptr(true),
+					VTpmEnabled:       to.Ptr(true),
+				},
+			}
+		} else {
+			return nil
+		}
 	}
-	securityProfile := &armcompute.SecurityProfile{
-		SecurityType: to.Ptr(armcompute.SecurityTypesConfidentialVM),
-		UefiSettings: &armcompute.UefiSettings{
-			SecureBootEnabled: to.Ptr(true),
-			VTpmEnabled:       to.Ptr(true),
-		},
-	}
-
-	return securityProfile
 }
 
 func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string, sizeSpec VMSizeEphemeralDiskSizeLimits) (*armcompute.VirtualMachineProperties, error) {
