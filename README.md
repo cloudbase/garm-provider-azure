@@ -102,6 +102,10 @@ To this end, this provider supports the following extra specs schema:
 			"type": "boolean",
 			"description": "The selected virtual machine size is confidential."
 		},
+		"trustedlaunch": {
+			"type": "boolean",
+			"description": "The selected virtual machine uses TrustedLaunch."
+		},
 		"use_ephemeral_storage": {
 			"type": "boolean",
 			"description": "Use ephemeral storage for the VM."
