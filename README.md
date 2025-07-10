@@ -23,15 +23,27 @@ Copy the binary on the same system where garm is running, and [point to it in th
 
 The config file for this external provider is a simple toml used to configure the azure credentials it needs to spin up virtual machines.
 
-For now, only service principles credentials and azure managed identity are supported. An example can be found [in the testdata folder](./testdata/config.toml).
+For now, service principals, azure managed identities and workload identities are supported. An example can be found [in the testdata folder](./testdata/config.toml).
 
 ```toml
 location = "westeurope"
+use_ephemeral_storage = true
+virtual_network_cidr = "10.0.0.0/16"
+use_accelerated_networking = true
 
 [credentials]
 subscription_id = "sample_sub_id"
 
-    # The service principle service credentials can be used when azure managed identity
+    # The workload identity can be used when other methods are not available
+    # or if a more precise selection of the workload on which to apply permissions is needed.
+    # This seems to be the latest recommended method from Azure.
+    # More information here: https://learn.microsoft.com/en-us/entra/workload-id/workload-identities-overview
+    [credentials.workload_identity]
+    tenant_id = "sample_tenant_id"
+    client_id = "sample_client_id"
+    federated_token_file = "/path/to/federated_token_file"
+
+    # The service principal credentials can be used when azure managed identity
     # is not available.
     [credentials.service_principal]
     # you can create a SP using:

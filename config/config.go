@@ -17,6 +17,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"os"
 	"regexp"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -76,9 +77,10 @@ func (c *Config) Validate() error {
 }
 
 type Credentials struct {
-	SubscriptionID  string                      `toml:"subscription_id"`
-	SPCredentials   ServicePrincipalCredentials `toml:"service_principal"`
-	ManagedIdentity ManagedIdentityCredentials  `toml:"managed_identity"`
+	SubscriptionID   string                      `toml:"subscription_id"`
+	SPCredentials    ServicePrincipalCredentials `toml:"service_principal"`
+	WorkloadIdentity WorkloadIdentityCredentials `toml:"workload_identity"`
+	ManagedIdentity  ManagedIdentityCredentials  `toml:"managed_identity"`
 	// ClientOptions is the azure identity client options that will be used to authenticate
 	// against an azure cloud. This is a heavy handed approach for now, defining the entire
 	// ClientOptions here, but should allow users to use this provider with AzureStack or any
@@ -117,17 +119,38 @@ func (c Credentials) GetCredentials() (azcore.TokenCredential, error) {
 		creds = append(creds, spCreds)
 	}
 
-	o := &azidentity.ManagedIdentityCredentialOptions{ClientOptions: c.ClientOptions}
-	if c.ManagedIdentity.ClientID != "" {
-		o.ID = azidentity.ClientID(c.ManagedIdentity.ClientID)
+	// Let's try with Workload Identity first, since this is the preferred method nowadays.
+	if c.WorkloadIdentity.ClientID != "" {
+		wiOpts := &azidentity.WorkloadIdentityCredentialOptions{ClientOptions: c.ClientOptions}
+		wiOpts.ClientID = c.WorkloadIdentity.ClientID
+		if c.WorkloadIdentity.TenantID != "" {
+			wiOpts.TenantID = c.WorkloadIdentity.TenantID
+		}
+		// NOTE: AuthorityHost is ignored for now
+		if c.WorkloadIdentity.FederatedTokenFile != "" {
+			if _, err := os.Stat(c.WorkloadIdentity.FederatedTokenFile); err != nil {
+				return nil, fmt.Errorf("federated token file %s does not exist: %w", c.WorkloadIdentity.FederatedTokenFile, err)
+			}
+			wiOpts.TokenFilePath = c.WorkloadIdentity.FederatedTokenFile
+		}
+		wiCred, err := azidentity.NewWorkloadIdentityCredential(wiOpts)
+		if err == nil {
+			creds = append(creds, wiCred)
+		}
 	}
-	miCred, err := azidentity.NewManagedIdentityCredential(o)
+
+	// After Workload Identity is configured (or not), we can try Managed Identity.
+	miOpts := &azidentity.ManagedIdentityCredentialOptions{ClientOptions: c.ClientOptions}
+	if c.ManagedIdentity.ClientID != "" {
+		miOpts.ID = azidentity.ClientID(c.ManagedIdentity.ClientID)
+	}
+	miCred, err := azidentity.NewManagedIdentityCredential(miOpts)
 	if err == nil {
 		creds = append(creds, miCred)
 	}
 
 	if len(creds) == 0 {
-		return nil, fmt.Errorf("failed to get credentials")
+		return nil, fmt.Errorf("failed to get credentials: %w", err)
 	}
 
 	chain, err := azidentity.NewChainedTokenCredential(creds, nil)
@@ -154,7 +177,7 @@ func (c ServicePrincipalCredentials) Validate() error {
 	}
 
 	if c.ClientSecret == "" {
-		return fmt.Errorf("missing subscription_id")
+		return fmt.Errorf("missing client_secret")
 	}
 
 	return nil
@@ -171,6 +194,14 @@ func (c ServicePrincipalCredentials) Auth(opts azcore.ClientOptions) (azcore.Tok
 		return nil, err
 	}
 	return cred, nil
+}
+
+type WorkloadIdentityCredentials struct {
+	TenantID           string `toml:"tenant_id"`
+	ClientID           string `toml:"client_id"`
+	FederatedTokenFile string `toml:"federated_token_file"`
+	// AuthorityHost is not handled yet.
+	// AuthorityHost      string `toml:"authority_host"`
 }
 
 type ManagedIdentityCredentials struct {
