@@ -40,6 +40,7 @@ func TestNewExtraSpecsFromBootstrapData(t *testing.T) {
 			input: json.RawMessage(`{
 				"allocate_public_ip": true,
 				"confidential": true,
+				"trustedlaunch": true,
 				"use_ephemeral_storage": true,
 				"use_accelerated_networking": true,
 				"open_inbound_ports": {
@@ -66,6 +67,7 @@ func TestNewExtraSpecsFromBootstrapData(t *testing.T) {
 			want: &extraSpecs{
 				AllocatePublicIP:         true,
 				Confidential:             true,
+				TrustedLaunch:            true,
 				UseEphemeralStorage:      to.Ptr(true),
 				UseAcceleratedNetworking: to.Ptr(true),
 				OpenInboundPorts: map[armnetwork.SecurityRuleProtocol][]int{
@@ -168,6 +170,14 @@ func TestNewExtraSpecsFromBootstrapData(t *testing.T) {
 			}`),
 			want:      nil,
 			errString: "confidential: Invalid type. Expected: boolean, given: string",
+		},
+		{
+			name: "invalid input - TrustedLaunch - wrong data type",
+			input: json.RawMessage(`{
+				"trustedlaunch": "true"
+			}`),
+			want:      nil,
+			errString: "trustedlaunch: Invalid type. Expected: boolean, given: string",
 		},
 		{
 			name: "invalid input - UseEphemeralStorage - wrong data type",
@@ -470,6 +480,7 @@ func TestRunnerSpecValidate(t *testing.T) {
 				},
 				SSHPublicKeys:            []string{},
 				Confidential:             true,
+				TrustedLaunch:            true,
 				UseEphemeralStorage:      true,
 				VirtualNetworkCIDR:       "10.10.0.0/16",
 				UseAcceleratedNetworking: true,
@@ -613,7 +624,377 @@ func TestRunnerSpecValidate(t *testing.T) {
 	}
 }
 
-func TestGetNewVMProprieties(t *testing.T) {
+func TestRunnerSpecSecurityProfiles(t *testing.T) {
+	tests := []struct {
+		name                  string
+		spec                  *RunnerSpec
+		wantedSecurityProfile *armcompute.SecurityProfile
+	}{
+		{
+			name: "no security profile",
+			spec: &RunnerSpec{
+				VMSize:             "Standard_DS2_v2",
+				AllocatePublicIP:   true,
+				AdminUsername:      "admin",
+				StorageAccountType: "Standard_LRS",
+				DiskSizeGB:         128,
+				OpenInboundPorts: map[armnetwork.SecurityRuleProtocol][]int{
+					armnetwork.SecurityRuleProtocolTCP: {22, 80},
+					armnetwork.SecurityRuleProtocolUDP: {53},
+				},
+				BootstrapParams: params.BootstrapInstance{
+					Name:          "test-instance",
+					InstanceToken: "test-token",
+					OSArch:        params.Amd64,
+					OSType:        params.Linux,
+					Image:         "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest",
+					Flavor:        "Standard_DS13_v2",
+					Tools: []params.RunnerApplicationDownload{
+						{
+							OS:                to.Ptr("linux"),
+							Architecture:      to.Ptr("x64"),
+							DownloadURL:       to.Ptr("http://test.com"),
+							Filename:          to.Ptr("runner.tar.gz"),
+							SHA256Checksum:    to.Ptr("sha256:1123"),
+							TempDownloadToken: to.Ptr("test-token"),
+						},
+					},
+					ExtraSpecs: json.RawMessage(`{}`),
+				},
+				Tools: params.RunnerApplicationDownload{
+					OS:                to.Ptr("linux"),
+					Architecture:      to.Ptr("x64"),
+					DownloadURL:       to.Ptr("http://test.com"),
+					Filename:          to.Ptr("runner.tar.gz"),
+					SHA256Checksum:    to.Ptr("sha256:1123"),
+					TempDownloadToken: to.Ptr("test-token"),
+				},
+				Tags: map[string]*string{
+					"tag1": to.Ptr("value1"),
+					"tag2": to.Ptr("value2"),
+				},
+				SSHPublicKeys:            []string{},
+				Confidential:             false,
+				TrustedLaunch:            false,
+				UseEphemeralStorage:      false,
+				VirtualNetworkCIDR:       "10.10.0.0/16",
+				UseAcceleratedNetworking: true,
+				VnetSubnetID:             "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default",
+				DisableIsolatedNetworks:  true,
+			},
+			wantedSecurityProfile: nil,
+		},
+		{
+			name: "confidential and not trustedlaunch",
+			spec: &RunnerSpec{
+				VMSize:             "Standard_DS2_v2",
+				AllocatePublicIP:   true,
+				AdminUsername:      "admin",
+				StorageAccountType: "Standard_LRS",
+				DiskSizeGB:         128,
+				OpenInboundPorts: map[armnetwork.SecurityRuleProtocol][]int{
+					armnetwork.SecurityRuleProtocolTCP: {22, 80},
+					armnetwork.SecurityRuleProtocolUDP: {53},
+				},
+				BootstrapParams: params.BootstrapInstance{
+					Name:          "test-instance",
+					InstanceToken: "test-token",
+					OSArch:        params.Amd64,
+					OSType:        params.Linux,
+					Image:         "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest",
+					Flavor:        "Standard_DS13_v2",
+					Tools: []params.RunnerApplicationDownload{
+						{
+							OS:                to.Ptr("linux"),
+							Architecture:      to.Ptr("x64"),
+							DownloadURL:       to.Ptr("http://test.com"),
+							Filename:          to.Ptr("runner.tar.gz"),
+							SHA256Checksum:    to.Ptr("sha256:1123"),
+							TempDownloadToken: to.Ptr("test-token"),
+						},
+					},
+					ExtraSpecs: json.RawMessage(`{}`),
+				},
+				Tools: params.RunnerApplicationDownload{
+					OS:                to.Ptr("linux"),
+					Architecture:      to.Ptr("x64"),
+					DownloadURL:       to.Ptr("http://test.com"),
+					Filename:          to.Ptr("runner.tar.gz"),
+					SHA256Checksum:    to.Ptr("sha256:1123"),
+					TempDownloadToken: to.Ptr("test-token"),
+				},
+				Tags: map[string]*string{
+					"tag1": to.Ptr("value1"),
+					"tag2": to.Ptr("value2"),
+				},
+				SSHPublicKeys:            []string{},
+				Confidential:             true,
+				TrustedLaunch:            false,
+				UseEphemeralStorage:      false,
+				VirtualNetworkCIDR:       "10.10.0.0/16",
+				UseAcceleratedNetworking: true,
+				VnetSubnetID:             "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default",
+				DisableIsolatedNetworks:  true,
+			},
+			wantedSecurityProfile: &armcompute.SecurityProfile{
+				SecurityType: to.Ptr(armcompute.SecurityTypesConfidentialVM),
+				UefiSettings: &armcompute.UefiSettings{
+					SecureBootEnabled: to.Ptr(true),
+					VTpmEnabled:       to.Ptr(true),
+				},
+			},
+		},
+		{
+			name: "confidential and trustedlaunch",
+			spec: &RunnerSpec{
+				VMSize:             "Standard_DS2_v2",
+				AllocatePublicIP:   true,
+				AdminUsername:      "admin",
+				StorageAccountType: "Standard_LRS",
+				DiskSizeGB:         128,
+				OpenInboundPorts: map[armnetwork.SecurityRuleProtocol][]int{
+					armnetwork.SecurityRuleProtocolTCP: {22, 80},
+					armnetwork.SecurityRuleProtocolUDP: {53},
+				},
+				BootstrapParams: params.BootstrapInstance{
+					Name:          "test-instance",
+					InstanceToken: "test-token",
+					OSArch:        params.Amd64,
+					OSType:        params.Linux,
+					Image:         "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest",
+					Flavor:        "Standard_DS13_v2",
+					Tools: []params.RunnerApplicationDownload{
+						{
+							OS:                to.Ptr("linux"),
+							Architecture:      to.Ptr("x64"),
+							DownloadURL:       to.Ptr("http://test.com"),
+							Filename:          to.Ptr("runner.tar.gz"),
+							SHA256Checksum:    to.Ptr("sha256:1123"),
+							TempDownloadToken: to.Ptr("test-token"),
+						},
+					},
+					ExtraSpecs: json.RawMessage(`{}`),
+				},
+				Tools: params.RunnerApplicationDownload{
+					OS:                to.Ptr("linux"),
+					Architecture:      to.Ptr("x64"),
+					DownloadURL:       to.Ptr("http://test.com"),
+					Filename:          to.Ptr("runner.tar.gz"),
+					SHA256Checksum:    to.Ptr("sha256:1123"),
+					TempDownloadToken: to.Ptr("test-token"),
+				},
+				Tags: map[string]*string{
+					"tag1": to.Ptr("value1"),
+					"tag2": to.Ptr("value2"),
+				},
+				SSHPublicKeys:            []string{},
+				Confidential:             true,
+				TrustedLaunch:            true,
+				UseEphemeralStorage:      false,
+				VirtualNetworkCIDR:       "10.10.0.0/16",
+				UseAcceleratedNetworking: true,
+				VnetSubnetID:             "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default",
+				DisableIsolatedNetworks:  true,
+			},
+			wantedSecurityProfile: &armcompute.SecurityProfile{
+				SecurityType: to.Ptr(armcompute.SecurityTypesConfidentialVM),
+				UefiSettings: &armcompute.UefiSettings{
+					SecureBootEnabled: to.Ptr(true),
+					VTpmEnabled:       to.Ptr(true),
+				},
+			},
+		},
+		{
+			name: "not confidential and trustedlaunch",
+			spec: &RunnerSpec{
+				VMSize:             "Standard_DS2_v2",
+				AllocatePublicIP:   true,
+				AdminUsername:      "admin",
+				StorageAccountType: "Standard_LRS",
+				DiskSizeGB:         128,
+				OpenInboundPorts: map[armnetwork.SecurityRuleProtocol][]int{
+					armnetwork.SecurityRuleProtocolTCP: {22, 80},
+					armnetwork.SecurityRuleProtocolUDP: {53},
+				},
+				BootstrapParams: params.BootstrapInstance{
+					Name:          "test-instance",
+					InstanceToken: "test-token",
+					OSArch:        params.Amd64,
+					OSType:        params.Linux,
+					Image:         "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest",
+					Flavor:        "Standard_DS13_v2",
+					Tools: []params.RunnerApplicationDownload{
+						{
+							OS:                to.Ptr("linux"),
+							Architecture:      to.Ptr("x64"),
+							DownloadURL:       to.Ptr("http://test.com"),
+							Filename:          to.Ptr("runner.tar.gz"),
+							SHA256Checksum:    to.Ptr("sha256:1123"),
+							TempDownloadToken: to.Ptr("test-token"),
+						},
+					},
+					ExtraSpecs: json.RawMessage(`{}`),
+				},
+				Tools: params.RunnerApplicationDownload{
+					OS:                to.Ptr("linux"),
+					Architecture:      to.Ptr("x64"),
+					DownloadURL:       to.Ptr("http://test.com"),
+					Filename:          to.Ptr("runner.tar.gz"),
+					SHA256Checksum:    to.Ptr("sha256:1123"),
+					TempDownloadToken: to.Ptr("test-token"),
+				},
+				Tags: map[string]*string{
+					"tag1": to.Ptr("value1"),
+					"tag2": to.Ptr("value2"),
+				},
+				SSHPublicKeys:            []string{},
+				Confidential:             false,
+				TrustedLaunch:            true,
+				UseEphemeralStorage:      false,
+				VirtualNetworkCIDR:       "10.10.0.0/16",
+				UseAcceleratedNetworking: true,
+				VnetSubnetID:             "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default",
+				DisableIsolatedNetworks:  true,
+			},
+			wantedSecurityProfile: &armcompute.SecurityProfile{
+				SecurityType: to.Ptr(armcompute.SecurityTypesTrustedLaunch),
+				UefiSettings: &armcompute.UefiSettings{
+					SecureBootEnabled: to.Ptr(true),
+					VTpmEnabled:       to.Ptr(true),
+				},
+			},
+		},
+		{
+			name: "confidential and ephemeral storage",
+			spec: &RunnerSpec{
+				VMSize:             "Standard_DS2_v2",
+				AllocatePublicIP:   true,
+				AdminUsername:      "admin",
+				StorageAccountType: "Standard_LRS",
+				DiskSizeGB:         128,
+				OpenInboundPorts: map[armnetwork.SecurityRuleProtocol][]int{
+					armnetwork.SecurityRuleProtocolTCP: {22, 80},
+					armnetwork.SecurityRuleProtocolUDP: {53},
+				},
+				BootstrapParams: params.BootstrapInstance{
+					Name:          "test-instance",
+					InstanceToken: "test-token",
+					OSArch:        params.Amd64,
+					OSType:        params.Linux,
+					Image:         "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest",
+					Flavor:        "Standard_DS13_v2",
+					Tools: []params.RunnerApplicationDownload{
+						{
+							OS:                to.Ptr("linux"),
+							Architecture:      to.Ptr("x64"),
+							DownloadURL:       to.Ptr("http://test.com"),
+							Filename:          to.Ptr("runner.tar.gz"),
+							SHA256Checksum:    to.Ptr("sha256:1123"),
+							TempDownloadToken: to.Ptr("test-token"),
+						},
+					},
+					ExtraSpecs: json.RawMessage(`{}`),
+				},
+				Tools: params.RunnerApplicationDownload{
+					OS:                to.Ptr("linux"),
+					Architecture:      to.Ptr("x64"),
+					DownloadURL:       to.Ptr("http://test.com"),
+					Filename:          to.Ptr("runner.tar.gz"),
+					SHA256Checksum:    to.Ptr("sha256:1123"),
+					TempDownloadToken: to.Ptr("test-token"),
+				},
+				Tags: map[string]*string{
+					"tag1": to.Ptr("value1"),
+					"tag2": to.Ptr("value2"),
+				},
+				SSHPublicKeys:            []string{},
+				Confidential:             true,
+				TrustedLaunch:            false,
+				UseEphemeralStorage:      true,
+				VirtualNetworkCIDR:       "10.10.0.0/16",
+				UseAcceleratedNetworking: true,
+				VnetSubnetID:             "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default",
+				DisableIsolatedNetworks:  true,
+			},
+			wantedSecurityProfile: nil,
+		},
+		{
+			name: "trustedlaunch and ephemeral storage",
+			spec: &RunnerSpec{
+				VMSize:             "Standard_DS2_v2",
+				AllocatePublicIP:   true,
+				AdminUsername:      "admin",
+				StorageAccountType: "Standard_LRS",
+				DiskSizeGB:         128,
+				OpenInboundPorts: map[armnetwork.SecurityRuleProtocol][]int{
+					armnetwork.SecurityRuleProtocolTCP: {22, 80},
+					armnetwork.SecurityRuleProtocolUDP: {53},
+				},
+				BootstrapParams: params.BootstrapInstance{
+					Name:          "test-instance",
+					InstanceToken: "test-token",
+					OSArch:        params.Amd64,
+					OSType:        params.Linux,
+					Image:         "Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest",
+					Flavor:        "Standard_DS13_v2",
+					Tools: []params.RunnerApplicationDownload{
+						{
+							OS:                to.Ptr("linux"),
+							Architecture:      to.Ptr("x64"),
+							DownloadURL:       to.Ptr("http://test.com"),
+							Filename:          to.Ptr("runner.tar.gz"),
+							SHA256Checksum:    to.Ptr("sha256:1123"),
+							TempDownloadToken: to.Ptr("test-token"),
+						},
+					},
+					ExtraSpecs: json.RawMessage(`{}`),
+				},
+				Tools: params.RunnerApplicationDownload{
+					OS:                to.Ptr("linux"),
+					Architecture:      to.Ptr("x64"),
+					DownloadURL:       to.Ptr("http://test.com"),
+					Filename:          to.Ptr("runner.tar.gz"),
+					SHA256Checksum:    to.Ptr("sha256:1123"),
+					TempDownloadToken: to.Ptr("test-token"),
+				},
+				Tags: map[string]*string{
+					"tag1": to.Ptr("value1"),
+					"tag2": to.Ptr("value2"),
+				},
+				SSHPublicKeys:            []string{},
+				Confidential:             false,
+				TrustedLaunch:            true,
+				UseEphemeralStorage:      true,
+				VirtualNetworkCIDR:       "10.10.0.0/16",
+				UseAcceleratedNetworking: true,
+				VnetSubnetID:             "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default",
+				DisableIsolatedNetworks:  true,
+			},
+			wantedSecurityProfile: &armcompute.SecurityProfile{
+				SecurityType: to.Ptr(armcompute.SecurityTypesTrustedLaunch),
+				UefiSettings: &armcompute.UefiSettings{
+					SecureBootEnabled: to.Ptr(true),
+					VTpmEnabled:       to.Ptr(true),
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			properties, err := tt.spec.GetNewVMProperties(
+				"networkInterfaceID",
+				VMSizeEphemeralDiskSizeLimits{
+					ResourceDiskSizeGB: 128,
+					CacheDiskSizeGB:    0,
+				},
+			)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantedSecurityProfile, properties.SecurityProfile)
+		})
+	}
+}
+
+func TestGetNewVMProperties(t *testing.T) {
 	tests := []struct {
 		name               string
 		spec               *RunnerSpec
@@ -666,6 +1047,7 @@ func TestGetNewVMProprieties(t *testing.T) {
 				},
 				SSHPublicKeys:            []string{},
 				Confidential:             false,
+				TrustedLaunch:            false,
 				UseEphemeralStorage:      false,
 				VirtualNetworkCIDR:       "10.10.0.0/16",
 				UseAcceleratedNetworking: true,
@@ -725,6 +1107,7 @@ func TestGetNewVMProprieties(t *testing.T) {
 				},
 				SSHPublicKeys:            []string{},
 				Confidential:             false,
+				TrustedLaunch:            false,
 				UseEphemeralStorage:      false,
 				VirtualNetworkCIDR:       "10.10.0.0/16",
 				UseAcceleratedNetworking: true,
@@ -784,6 +1167,7 @@ func TestGetNewVMProprieties(t *testing.T) {
 				},
 				SSHPublicKeys:            []string{},
 				Confidential:             false,
+				TrustedLaunch:            false,
 				UseEphemeralStorage:      false,
 				VirtualNetworkCIDR:       "10.10.0.0/16",
 				UseAcceleratedNetworking: true,
@@ -843,6 +1227,7 @@ func TestGetNewVMProprieties(t *testing.T) {
 				},
 				SSHPublicKeys:            []string{},
 				Confidential:             false,
+				TrustedLaunch:            false,
 				UseEphemeralStorage:      false,
 				VirtualNetworkCIDR:       "10.10.0.0/16",
 				UseAcceleratedNetworking: true,
@@ -902,6 +1287,7 @@ func TestGetNewVMProprieties(t *testing.T) {
 				},
 				SSHPublicKeys:            []string{},
 				Confidential:             false,
+				TrustedLaunch:            false,
 				UseEphemeralStorage:      true,
 				VirtualNetworkCIDR:       "10.10.0.0/16",
 				UseAcceleratedNetworking: true,
