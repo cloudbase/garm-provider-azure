@@ -55,11 +55,6 @@ type azureProvider struct {
 
 // CreateInstance creates a new compute instance in the provider.
 func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams params.BootstrapInstance) (params.ProviderInstance, error) {
-	if bootstrapParams.OSArch != params.Amd64 {
-		// x86_64 only for now. Azure does seem to support arm64, which we will look at at a later time.
-		return params.ProviderInstance{}, fmt.Errorf("invalid architecture %s (supported: %s)", bootstrapParams.OSArch, params.Amd64)
-	}
-
 	runnerSpec, err := spec.GetRunnerSpecFromBootstrapParams(bootstrapParams, a.controllerID, a.cfg)
 	if err != nil {
 		return params.ProviderInstance{}, fmt.Errorf("failed to generate spec: %w", err)
