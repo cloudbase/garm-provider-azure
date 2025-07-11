@@ -211,34 +211,7 @@ func TestNewConfig(t *testing.T) {
 }
 
 func TestAbsentTokenFile(t *testing.T) {
-	mockData := `
-	location = "westeurope"
-	use_ephemeral_storage = true
-	virtual_network_cidr = "10.10.0.0/24"
-	use_accelerated_networking = true
-	vnet_subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default"
-	disable_isolated_networks = true
-
-	[credentials]
-	subscription_id = "sample_sub_id"
-
-	[credentials.workload_identity]
-	tenant_id = "sample_tenant_id"
-	client_id = "sample_client_id"
-	federated_token_file = "/path/to/non_existent_token_file"
-	`
-
-	// Create a temporary file
-	tmpFile, err := os.CreateTemp("", "config-*.toml")
-	require.NoError(t, err, "Failed to create temporary file")
-	defer os.Remove(tmpFile.Name())
-
-	_, err = tmpFile.WriteString(mockData)
-	require.NoError(t, err, "Failed to write to temporary file")
-	err = tmpFile.Close()
-	require.NoError(t, err, "Failed to close temporary file")
-
-	// Use the temporary file path as the argument to NewConfig
-	_, err = NewConfig(tmpFile.Name())
+	conf, err := NewConfig("../testdata/config_with_workload_identity.toml")
 	require.Error(t, err, "NewConfig should return an error")
+	require.Nil(t, conf)
 }
