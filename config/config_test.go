@@ -157,20 +157,25 @@ func TestNewConfig(t *testing.T) {
 	[credentials]
 	subscription_id = "sample_sub_id"
 
-    # The service principle service credentials can be used when azure managed identity
-    # is not available.
-    [credentials.service_principal]
-    # you can create a SP using:
-    # az ad sp create-for-rbac --scopes /subscriptions/<subscription ID> --role Contributor
-    tenant_id = "sample_tenant_id"
-    client_id = "sample_client_id"
-    client_secret = "super secret client secret"
+	[credentials.workload_identity]
+	tenant_id = "sample_tenant_id"
+	client_id = "sample_client_id"
+	federated_token_file = "/dev/null"
 
-    # The managed identity token source is always added to the chain of possible authentication
-    # sources. The client ID can be overwritten if needed. 
-    [credentials.managed_identity]
-    # The client ID to use. This config value is optional.
-    client_id = "sample_client_id"
+	# The service principle service credentials can be used when azure managed identity
+	# is not available.
+	[credentials.service_principal]
+	# you can create a SP using:
+	# az ad sp create-for-rbac --scopes /subscriptions/<subscription ID> --role Contributor
+	tenant_id = "sample_tenant_id"
+	client_id = "sample_client_id"
+	client_secret = "super secret client secret"
+
+	# The managed identity token source is always added to the chain of possible authentication
+	# sources. The client ID can be overwritten if needed.
+	[credentials.managed_identity]
+	# The client ID to use. This config value is optional.
+	client_id = "sample_client_id"
 	`
 
 	// Create a temporary file
@@ -194,10 +199,19 @@ func TestNewConfig(t *testing.T) {
 	require.Equal(t, "sample_client_id", cfg.Credentials.SPCredentials.ClientID, "ClientID is not as expected")
 	require.Equal(t, "super secret client secret", cfg.Credentials.SPCredentials.ClientSecret, "ClientSecret is not as expected")
 	require.Equal(t, "sample_client_id", cfg.Credentials.ManagedIdentity.ClientID, "ManagedIdentity ClientID is not as expected")
+	require.Equal(t, "sample_tenant_id", cfg.Credentials.WorkloadIdentity.TenantID, "WorkloadIdentity TenantID is not as expected")
+	require.Equal(t, "sample_client_id", cfg.Credentials.WorkloadIdentity.ClientID, "WorkloadIdentity ClientID is not as expected")
+	require.Equal(t, "/dev/null", cfg.Credentials.WorkloadIdentity.FederatedTokenFile, "WorkloadIdentity FederatedTokenFile is not as expected")
 
 	require.True(t, cfg.UseEphemeralStorage, "UseEphemeralStorage is not as expected")
 	require.Equal(t, "10.10.0.0/24", cfg.VirtualNetworkCIDR, "VirtualNetworkCIDR is not as expected")
 	require.Equal(t, "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default", cfg.VnetSubnetID, "VnetSubnetID is not as expected")
 	require.True(t, cfg.UseAcceleratedNetworking, "UseAcceleratedNetworking is not as expected")
 	require.True(t, cfg.DisableIsolatedNetworks, "DisableIsolatedNetworks is not as expected")
+}
+
+func TestAbsentTokenFile(t *testing.T) {
+	conf, err := NewConfig("../testdata/config_with_workload_identity.toml")
+	require.Error(t, err, "NewConfig should return an error")
+	require.Nil(t, conf)
 }

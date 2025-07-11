@@ -1,0 +1,14 @@
+location = "westeurope"
+use_ephemeral_storage = true
+virtual_network_cidr = "10.10.0.0/24"
+use_accelerated_networking = true
+vnet_subnet_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default"
+disable_isolated_networks = true
+
+[credentials]
+subscription_id = "sample_sub_id"
+
+    [credentials.workload_identity]
+    tenant_id = "sample_tenant_id"
+    client_id = "sample_client_id"
+    federated_token_file = "/path/to/federated_token_file"
