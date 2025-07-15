@@ -95,6 +95,7 @@ And another example for an arm64 (aarch64) based Linux pool:
 ```bash
 garm-cli pool create \
    --enabled=true \
+   --os-arch arm64 \
    --flavor Standard_D2ps_v6 \
    --min-idle-runners 0 --max-runners 4 \
    --image Canonical:0001-com-ubuntu-server-jammy:22_04-lts-arm64:22.04.202206040 \
