@@ -77,7 +77,7 @@ garm-cli pool create \
 
 This will create a new Windows runner pool for the repo with ID ```f0b1c1c8-b605-4560-adb7-79b95e2e470c``` on azure, using the image ```MicrosoftWindowsServer:WindowsServer:2022-Datacenter:latest``` and VM size ```Standard_F2s```. You can, of course, tweak the values in the above command to suit your needs.
 
-Here an example for a Linux pool:
+Here an example for a Linux pool (x86-64 architecture):
 
 ```bash
 garm-cli pool create \
@@ -86,7 +86,20 @@ garm-cli pool create \
    --min-idle-runners 1 --max-runners 8 \
    --image Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:22.04.202206040 \
    --org=a2f1c7c8-b605-4560-adb7-79b95e2e462d \
-   --tags=azure,ubuntu \
+   --tags=azure,ubuntu,amd64 \
+   --provider-name azure
+```
+
+And another example for an arm64 (aarch64) based Linux pool:
+
+```bash
+garm-cli pool create \
+   --enabled=true \
+   --flavor Standard_D2ps_v6 \
+   --min-idle-runners 0 --max-runners 4 \
+   --image Canonical:0001-com-ubuntu-server-jammy:22_04-lts-arm64:22.04.202206040 \
+   --org=a2f1c7c8-b605-4560-adb7-79b95e2e462d \
+   --tags=azure,ubuntu,arm64 \
    --provider-name azure
 ```
 
