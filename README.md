@@ -17,7 +17,7 @@ cd garm-provider-azure
 go build .
 ```
 
-Copy the binary on the same system where garm is running, and [point to it in the config](https://github.com/cloudbase/garm/blob/main/doc/providers.md#the-external-provider).
+Copy the binary on the same system where garm is running, and [point to it in the config](https://github.com/cloudbase/garm/blob/main/doc/config.md#provider-configuration).
 
 ## Configure
 
@@ -61,7 +61,7 @@ subscription_id = "sample_sub_id"
 
 ## Creating a pool
 
-After you [add it to garm as an external provider](https://github.com/cloudbase/garm/blob/main/doc/providers.md#the-external-provider), you need to create a pool that uses it. Assuming you named your external provider as ```azure``` in the garm config, the following command should create a new pool:
+After you [add it to garm as an external provider](https://github.com/cloudbase/garm/blob/main/doc/config.md#provider-configuration), you need to create a pool that uses it. Assuming you named your external provider as ```azure``` in the garm config, the following command should create a new pool:
 
 ```bash
 garm-cli pool create \
