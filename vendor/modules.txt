@@ -95,9 +95,6 @@ github.com/cloudbase/garm-provider-common/execution/v0.1.0
 github.com/cloudbase/garm-provider-common/execution/v0.1.1
 github.com/cloudbase/garm-provider-common/params
 github.com/cloudbase/garm-provider-common/util
-# github.com/davecgh/go-spew v1.1.1
-## explicit
-github.com/davecgh/go-spew/spew
 # github.com/felixge/httpsnoop v1.0.4
 ## explicit; go 1.13
 github.com/felixge/httpsnoop
@@ -132,13 +129,12 @@ github.com/pkg/browser
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
-# github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
-## explicit
-github.com/pmezard/go-difflib/difflib
-# github.com/stretchr/testify v1.11.1
+# github.com/stretchr/testify v1.12.1
 ## explicit; go 1.17
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/assert/yaml
+github.com/stretchr/testify/internal/difflib
+github.com/stretchr/testify/internal/spew
 github.com/stretchr/testify/require
 # github.com/teris-io/shortid v0.0.0-20220617161101-71ec9f2aa569
 ## explicit; go 1.18
@@ -152,6 +148,9 @@ github.com/xeipuuv/gojsonreference
 # github.com/xeipuuv/gojsonschema v1.2.0
 ## explicit
 github.com/xeipuuv/gojsonschema
+# go.yaml.in/yaml/v3 v3.0.5
+## explicit; go 1.16
+go.yaml.in/yaml/v3
 # go.yaml.in/yaml/v4 v4.0.0-rc.4
 ## explicit; go 1.18
 go.yaml.in/yaml/v4
