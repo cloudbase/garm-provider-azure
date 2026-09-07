@@ -1,6 +1,6 @@
 module github.com/cloudbase/garm-provider-azure
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.1
@@ -13,7 +13,7 @@ require (
 	github.com/invopop/jsonschema v0.14.0
 	github.com/stretchr/testify v1.12.1
 	github.com/xeipuuv/gojsonschema v1.2.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 )
 
 require (
