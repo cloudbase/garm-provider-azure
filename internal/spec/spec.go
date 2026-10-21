@@ -103,6 +103,7 @@ func newExtraSpecsFromBootstrapData(data params.BootstrapInstance) (*extraSpecs,
 }
 
 type extraSpecs struct {
+	Spot                     bool                                      `json:"spot,omitempty" jsonschema:"description=Launch the VM as an Azure Spot VM."`
 	AllocatePublicIP         bool                                      `json:"allocate_public_ip,omitempty" jsonschema:"description=Allocate a public IP to the VM."`
 	OpenInboundPorts         map[armnetwork.SecurityRuleProtocol][]int `json:"open_inbound_ports,omitempty" jsonschema:"description=A map of protocol to list of inbound ports to open."`
 	StorageAccountType       armcompute.StorageAccountTypes            `json:"storage_account_type,omitempty" jsonschema:"description=Azure storage account type. Default is Standard_LRS."`
@@ -207,6 +208,7 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 
 	spec := &RunnerSpec{
 		VMSize:                   data.Flavor,
+		Spot:                     extraSpecs.Spot,
 		AllocatePublicIP:         extraSpecs.AllocatePublicIP,
 		OpenInboundPorts:         extraSpecs.OpenInboundPorts,
 		AdminUsername:            appdefaults.DefaultUser,
@@ -263,6 +265,7 @@ func GetRunnerSpecFromBootstrapParams(data params.BootstrapInstance, controllerI
 
 type RunnerSpec struct {
 	VMSize                   string
+	Spot                     bool
 	AllocatePublicIP         bool
 	AdminUsername            string
 	StorageAccountType       armcompute.StorageAccountTypes
@@ -560,6 +563,12 @@ func (r RunnerSpec) GetNewVMProperties(networkInterfaceID string, sizeSpec VMSiz
 			},
 		},
 		SecurityProfile: securityProfile,
+	}
+	if r.Spot {
+		maxPrice := float64(-1)
+		properties.Priority = to.Ptr(armcompute.VirtualMachinePriorityTypesSpot)
+		properties.EvictionPolicy = to.Ptr(armcompute.VirtualMachineEvictionPolicyTypesDelete)
+		properties.BillingProfile = &armcompute.BillingProfile{MaxPrice: &maxPrice}
 	}
 
 	if r.BootstrapParams.OSType == params.Linux {

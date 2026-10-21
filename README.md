@@ -120,6 +120,10 @@ To this end, this provider supports the following extra specs schema:
 	"type": "object",
 	"description": "Schema defining supported extra specs for the Garm Azure Provider",
 	"properties": {
+		"spot": {
+			"type": "boolean",
+			"description": "Launch the VM as an Azure Spot VM. Defaults to false; eviction deletes the VM."
+		},
 		"allocate_public_ip": {
 			"type": "boolean",
 			"description": "Allocate a public IP to the VM."
@@ -250,6 +254,11 @@ An example extra specs json would look like this:
     "disable_network_isolation": true
 }
 ```
+
+Set `spot` to `true` to request an Azure Spot VM. The provider sets the
+eviction policy to `Delete` and `maxPrice` to `-1`, Azure's on-demand price
+ceiling. This does not guarantee Spot capacity or a particular price; Azure
+may evict the VM when capacity is unavailable.
 
 To set it on an existing pool, simply run:
 

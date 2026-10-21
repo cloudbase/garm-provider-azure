@@ -33,6 +33,7 @@ import (
 	"github.com/cloudbase/garm-provider-azure/internal/spec"
 	"github.com/cloudbase/garm-provider-common/params"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // There are fake clients called for example VirtualNetworkServer
@@ -463,7 +464,9 @@ func TestCreateVirtualMachine(t *testing.T) {
 		CacheDiskSizeGB:    0,
 	}
 	myVirtualMachineServer := armcomputefake.VirtualMachinesServer{}
+	var requestProperties *armcompute.VirtualMachineProperties
 	myVirtualMachineServer.BeginCreateOrUpdate = func(ctx context.Context, resourceGroupName string, vmName string, parameters armcompute.VirtualMachine, options *armcompute.VirtualMachinesClientBeginCreateOrUpdateOptions) (resp azfake.PollerResponder[armcompute.VirtualMachinesClientCreateOrUpdateResponse], errResp azfake.ErrorResponder) {
+		requestProperties = parameters.Properties
 		resp.SetTerminalResponse(200, armcompute.VirtualMachinesClientCreateOrUpdateResponse{
 			VirtualMachine: armcompute.VirtualMachine{
 				ID:   to.Ptr("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.Compute/virtualMachines/vm-test"),
@@ -599,6 +602,22 @@ func TestCreateVirtualMachine(t *testing.T) {
 			}
 		})
 	}
+
+	require.NotNil(t, requestProperties)
+	assert.Nil(t, requestProperties.Priority)
+	assert.Nil(t, requestProperties.EvictionPolicy)
+	assert.Nil(t, requestProperties.BillingProfile)
+	spotSpec := *tests[1].spec
+	spotSpec.Spot = true
+	require.NoError(t, a.CreateVirtualMachine(ctx, &spotSpec, nicID, sizeSpec))
+	require.NotNil(t, requestProperties)
+	require.NotNil(t, requestProperties.Priority)
+	require.NotNil(t, requestProperties.EvictionPolicy)
+	require.NotNil(t, requestProperties.BillingProfile)
+	require.NotNil(t, requestProperties.BillingProfile.MaxPrice)
+	assert.Equal(t, armcompute.VirtualMachinePriorityTypesSpot, *requestProperties.Priority)
+	assert.Equal(t, armcompute.VirtualMachineEvictionPolicyTypesDelete, *requestProperties.EvictionPolicy)
+	assert.Equal(t, float64(-1), *requestProperties.BillingProfile.MaxPrice)
 }
 
 func TestGetMaxEphemeralDiskSize(t *testing.T) {

@@ -39,6 +39,7 @@ func TestNewExtraSpecsFromBootstrapData(t *testing.T) {
 			name: "extra specs with all fields",
 			input: json.RawMessage(`{
 				"allocate_public_ip": true,
+				"spot": true,
 				"confidential": true,
 				"trustedlaunch": true,
 				"use_ephemeral_storage": true,
@@ -65,6 +66,7 @@ func TestNewExtraSpecsFromBootstrapData(t *testing.T) {
 				"extra_context": {"key": "value"}
 			}`),
 			want: &extraSpecs{
+				Spot:                     true,
 				AllocatePublicIP:         true,
 				Confidential:             true,
 				TrustedLaunch:            true,
@@ -98,6 +100,16 @@ func TestNewExtraSpecsFromBootstrapData(t *testing.T) {
 			errString: "",
 		},
 		{
+			name:  "spot disabled",
+			input: json.RawMessage(`{"spot": false}`),
+			want: &extraSpecs{
+				Spot:               false,
+				OpenInboundPorts:   map[armnetwork.SecurityRuleProtocol][]int{},
+				StorageAccountType: "Standard_LRS",
+				ExtraTags:          map[string]string{},
+			},
+		},
+		{
 			name:  "empty BootstrapData - no extra specs",
 			input: json.RawMessage(`{}`),
 			want: &extraSpecs{
@@ -114,6 +126,14 @@ func TestNewExtraSpecsFromBootstrapData(t *testing.T) {
 			}`),
 			want:      nil,
 			errString: "failed to validate extra specs",
+		},
+		{
+			name: "invalid input - spot - wrong data type",
+			input: json.RawMessage(`{
+				"spot": "true"
+			}`),
+			want:      nil,
+			errString: "spot: Invalid type. Expected: boolean, given: string",
 		},
 		{
 			name: "invalid input - allocate_public_ip - wrong data type",
@@ -347,6 +367,12 @@ func TestGetRunnerSpecFromBootstrapParams(t *testing.T) {
 			},
 		},
 		{
+			name:       "spot via extra specs",
+			cfg:        &config.Config{},
+			extraspecs: json.RawMessage(`{"spot": true}`),
+			want:       &RunnerSpec{Spot: true},
+		},
+		{
 			name: "override via extra specs",
 			cfg: &config.Config{
 				UseEphemeralStorage:      true,
@@ -417,6 +443,7 @@ func TestGetRunnerSpecFromBootstrapParams(t *testing.T) {
 			assert.Equal(t, tt.want.UseAcceleratedNetworking, got.UseAcceleratedNetworking, "UseAcceleratedNetworking")
 			assert.Equal(t, tt.want.DisableIsolatedNetworks, got.DisableIsolatedNetworks, "DisableIsolatedNetworks")
 			assert.Equal(t, tt.want.VnetSubnetID, got.VnetSubnetID, "VNetSubnetID")
+			assert.Equal(t, tt.want.Spot, got.Spot, "Spot")
 			assert.Equal(t, tt.want.SSHPublicKeys, got.SSHPublicKeys, "SSHPublicKeys")
 
 			// as are marshalled and unmarshalled, the map might not nil, but empty
@@ -1315,6 +1342,19 @@ func TestGetNewVMProperties(t *testing.T) {
 				assert.Equal(t, tt.spec.BootstrapParams.Name, *properties.OSProfile.ComputerName)
 				assert.Equal(t, tt.spec.AdminUsername, *properties.OSProfile.AdminUsername)
 				assert.Equal(t, tt.networkInterfaceID, *properties.NetworkProfile.NetworkInterfaces[0].ID)
+				assert.Nil(t, properties.Priority)
+				assert.Nil(t, properties.EvictionPolicy)
+				assert.Nil(t, properties.BillingProfile)
+				if tt.name == "valid specs" {
+					spotSpec := *tt.spec
+					spotSpec.Spot = true
+					spotProperties, err := spotSpec.GetNewVMProperties(tt.networkInterfaceID, tt.sizeSpec)
+					require.NoError(t, err)
+					assert.Equal(t, armcompute.VirtualMachinePriorityTypesSpot, *spotProperties.Priority)
+					assert.Equal(t, armcompute.VirtualMachineEvictionPolicyTypesDelete, *spotProperties.EvictionPolicy)
+					require.NotNil(t, spotProperties.BillingProfile)
+					assert.Equal(t, float64(-1), *spotProperties.BillingProfile.MaxPrice)
+				}
 			} else {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errString)
