@@ -55,7 +55,7 @@ type azureProvider struct {
 }
 
 // CreateInstance creates a new compute instance in the provider.
-func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams params.BootstrapInstance) (instance params.ProviderInstance, err error) {
+func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams params.BootstrapInstance) (params.ProviderInstance, error) {
 	runnerSpec, err := spec.GetRunnerSpecFromBootstrapParams(bootstrapParams, a.controllerID, a.cfg)
 	if err != nil {
 		return params.ProviderInstance{}, fmt.Errorf("failed to generate spec: %w", err)
@@ -96,22 +96,12 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		return params.ProviderInstance{}, fmt.Errorf("failed to create resource group: %w", err)
 	}
 
-	defer func() {
-		if err == nil {
-			return
-		}
-
-		if cleanupErr := a.azCli.DeleteResourceGroup(ctx, runnerSpec.BootstrapParams.Name, true); cleanupErr != nil {
-			err = errors.Join(err, fmt.Errorf("failed to clean up resource group: %w", cleanupErr))
-		}
-	}()
-
 	var pubIPID string
 	var pubIP string
 	if runnerSpec.AllocatePublicIP {
 		publicIP, err := a.azCli.CreatePublicIP(ctx, runnerSpec.BootstrapParams.Name)
 		if err != nil {
-			return params.ProviderInstance{}, fmt.Errorf("failed to create public IP: %w", err)
+			return params.ProviderInstance{}, a.rollbackFailedCreate(ctx, runnerSpec.BootstrapParams.Name, fmt.Errorf("failed to create public IP: %w", err))
 		}
 		if publicIP.Properties != nil && publicIP.Properties.IPAddress != nil {
 			pubIP = *publicIP.Properties.IPAddress
@@ -121,27 +111,27 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 
 	nsg, err := a.azCli.CreateNetworkSecurityGroup(ctx, runnerSpec.BootstrapParams.Name, runnerSpec)
 	if err != nil {
-		return params.ProviderInstance{}, fmt.Errorf("failed to create network security group: %w", err)
+		return params.ProviderInstance{}, a.rollbackFailedCreate(ctx, runnerSpec.BootstrapParams.Name, fmt.Errorf("failed to create network security group: %w", err))
 	}
 
 	subnetID, err := a.resolveSubnetID(ctx, runnerSpec)
 	if err != nil {
-		return params.ProviderInstance{}, fmt.Errorf("failed to resolve subnet ID: %w", err)
+		return params.ProviderInstance{}, a.rollbackFailedCreate(ctx, runnerSpec.BootstrapParams.Name, fmt.Errorf("failed to resolve subnet ID: %w", err))
 	}
 
 	nic, err := a.azCli.CreateNetWorkInterface(ctx, runnerSpec.BootstrapParams.Name, subnetID, *nsg.ID, pubIPID, runnerSpec.UseAcceleratedNetworking)
 	if err != nil {
-		return params.ProviderInstance{}, fmt.Errorf("failed to create NIC: %w", err)
+		return params.ProviderInstance{}, a.rollbackFailedCreate(ctx, runnerSpec.BootstrapParams.Name, fmt.Errorf("failed to create NIC: %w", err))
 	}
 
 	if err := a.azCli.CreateVirtualMachine(ctx, runnerSpec, *nic.ID, sizeSpec); err != nil {
-		return params.ProviderInstance{}, fmt.Errorf("failed to create VM: %w", err)
+		return params.ProviderInstance{}, a.rollbackFailedCreate(ctx, runnerSpec.BootstrapParams.Name, fmt.Errorf("failed to create VM: %w", err))
 	}
 
 	// We're lying here. It takes longer for the client to finish polling than for the VM to
 	// start running the userdata. Just return that the instance is running once the request
 	// to create it goes through.
-	instance = params.ProviderInstance{
+	instance := params.ProviderInstance{
 		ProviderID: runnerSpec.BootstrapParams.Name,
 		Name:       runnerSpec.BootstrapParams.Name,
 		OSType:     runnerSpec.BootstrapParams.OSType,
@@ -158,6 +148,15 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 		})
 	}
 	return instance, nil
+}
+
+func (a *azureProvider) rollbackFailedCreate(ctx context.Context, groupName string, createErr error) error {
+	cleanupErr := a.azCli.DeleteResourceGroup(ctx, groupName, true)
+	if cleanupErr != nil {
+		return errors.Join(createErr, fmt.Errorf("failed to clean up resource group: %w", cleanupErr))
+	}
+
+	return createErr
 }
 
 func (a *azureProvider) resolveSubnetID(ctx context.Context, runnerSpec *spec.RunnerSpec) (string, error) {
