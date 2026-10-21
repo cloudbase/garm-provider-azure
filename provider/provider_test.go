@@ -37,6 +37,23 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type createInstanceTestCase struct {
+	name                string
+	respCodeSKU         int
+	respCodeRG          int
+	respCodePubIP       int
+	respCodeSG          int
+	respCodeVNet        int
+	respCodeSubNet      int
+	respCodeNIC         int
+	respCodeVM          int
+	osArch              params.OSArch
+	expected            params.ProviderInstance
+	errString           string
+	cleanupErrString    string
+	expectedDeleteCalls int
+}
+
 func TestCreateInstance(t *testing.T) {
 	ctx := context.Background()
 	tags := map[string]*string{
@@ -150,20 +167,7 @@ func TestCreateInstance(t *testing.T) {
 		cfg:          cfg,
 	}
 
-	tests := []struct {
-		name           string
-		respCodeSKU    int
-		respCodeRG     int
-		respCodePubIP  int
-		respCodeSG     int
-		respCodeVNet   int
-		respCodeSubNet int
-		respCodeNIC    int
-		respCodeVM     int
-		osArch         params.OSArch
-		expected       params.ProviderInstance
-		errString      string
-	}{
+	tests := []createInstanceTestCase{
 		{
 			name:           "success",
 			respCodeSKU:    200,
@@ -184,110 +188,136 @@ func TestCreateInstance(t *testing.T) {
 				OSVersion:  "latest",
 				Status:     "running",
 			},
-			errString: "",
+			errString:           "",
+			expectedDeleteCalls: 0,
 		},
 		{
-			name:           "failed to get max ephemeral disk size",
-			respCodeSKU:    404,
-			respCodeRG:     200,
-			respCodePubIP:  200,
-			respCodeSG:     200,
-			respCodeVNet:   200,
-			respCodeSubNet: 200,
-			respCodeNIC:    200,
-			respCodeVM:     200,
-			osArch:         params.Amd64,
-			expected:       params.ProviderInstance{},
-			errString:      "failed to get max ephemeral disk size",
+			name:                "failed to get max ephemeral disk size",
+			respCodeSKU:         404,
+			respCodeRG:          200,
+			respCodePubIP:       200,
+			respCodeSG:          200,
+			respCodeVNet:        200,
+			respCodeSubNet:      200,
+			respCodeNIC:         200,
+			respCodeVM:          200,
+			osArch:              params.Amd64,
+			expected:            params.ProviderInstance{},
+			errString:           "failed to get max ephemeral disk size",
+			expectedDeleteCalls: 0,
 		},
 		{
-			name:           "failed to create resource group",
-			respCodeSKU:    200,
-			respCodeRG:     404,
-			respCodePubIP:  200,
-			respCodeSG:     200,
-			respCodeVNet:   200,
-			respCodeSubNet: 200,
-			respCodeNIC:    200,
-			respCodeVM:     200,
-			osArch:         params.Amd64,
-			expected:       params.ProviderInstance{},
-			errString:      "failed to create resource group",
+			name:                "failed to create resource group",
+			respCodeSKU:         200,
+			respCodeRG:          404,
+			respCodePubIP:       200,
+			respCodeSG:          200,
+			respCodeVNet:        200,
+			respCodeSubNet:      200,
+			respCodeNIC:         200,
+			respCodeVM:          200,
+			osArch:              params.Amd64,
+			expected:            params.ProviderInstance{},
+			errString:           "failed to create resource group",
+			expectedDeleteCalls: 0,
 		},
 		{
-			name:           "failed to create public IP",
-			respCodeSKU:    200,
-			respCodeRG:     200,
-			respCodePubIP:  404,
-			respCodeSG:     200,
-			respCodeVNet:   200,
-			respCodeSubNet: 200,
-			respCodeNIC:    200,
-			respCodeVM:     200,
-			osArch:         params.Amd64,
-			expected:       params.ProviderInstance{},
-			errString:      "failed to create public IP",
+			name:                "failed to create public IP",
+			respCodeSKU:         200,
+			respCodeRG:          200,
+			respCodePubIP:       404,
+			respCodeSG:          200,
+			respCodeVNet:        200,
+			respCodeSubNet:      200,
+			respCodeNIC:         200,
+			respCodeVM:          200,
+			osArch:              params.Amd64,
+			expected:            params.ProviderInstance{},
+			errString:           "failed to create public IP",
+			expectedDeleteCalls: 1,
 		},
 		{
-			name:           "failed to create network security group",
-			respCodeSKU:    200,
-			respCodeRG:     200,
-			respCodePubIP:  200,
-			respCodeSG:     404,
-			respCodeVNet:   200,
-			respCodeSubNet: 200,
-			respCodeNIC:    200,
-			respCodeVM:     200,
-			osArch:         params.Amd64,
-			expected:       params.ProviderInstance{},
-			errString:      "failed to create network security group",
+			name:                "failed to create network security group",
+			respCodeSKU:         200,
+			respCodeRG:          200,
+			respCodePubIP:       200,
+			respCodeSG:          404,
+			respCodeVNet:        200,
+			respCodeSubNet:      200,
+			respCodeNIC:         200,
+			respCodeVM:          200,
+			osArch:              params.Amd64,
+			expected:            params.ProviderInstance{},
+			errString:           "failed to create network security group",
+			expectedDeleteCalls: 1,
 		},
 		{
-			name:           "failed to resolve subnet ID",
-			respCodeSKU:    200,
-			respCodeRG:     200,
-			respCodePubIP:  200,
-			respCodeSG:     200,
-			respCodeVNet:   404,
-			respCodeSubNet: 404,
-			respCodeNIC:    200,
-			respCodeVM:     200,
-			osArch:         params.Amd64,
-			expected:       params.ProviderInstance{},
-			errString:      "failed to resolve subnet ID",
+			name:                "failed to resolve subnet ID",
+			respCodeSKU:         200,
+			respCodeRG:          200,
+			respCodePubIP:       200,
+			respCodeSG:          200,
+			respCodeVNet:        404,
+			respCodeSubNet:      404,
+			respCodeNIC:         200,
+			respCodeVM:          200,
+			osArch:              params.Amd64,
+			expected:            params.ProviderInstance{},
+			errString:           "failed to resolve subnet ID",
+			expectedDeleteCalls: 1,
 		},
 		{
-			name:           "failed to create NIC",
-			respCodeSKU:    200,
-			respCodeRG:     200,
-			respCodePubIP:  200,
-			respCodeSG:     200,
-			respCodeVNet:   200,
-			respCodeSubNet: 200,
-			respCodeNIC:    404,
-			respCodeVM:     200,
-			osArch:         params.Amd64,
-			expected:       params.ProviderInstance{},
-			errString:      "failed to create NIC",
+			name:                "failed to create NIC",
+			respCodeSKU:         200,
+			respCodeRG:          200,
+			respCodePubIP:       200,
+			respCodeSG:          200,
+			respCodeVNet:        200,
+			respCodeSubNet:      200,
+			respCodeNIC:         404,
+			respCodeVM:          200,
+			osArch:              params.Amd64,
+			expected:            params.ProviderInstance{},
+			errString:           "failed to create NIC",
+			expectedDeleteCalls: 1,
 		},
 		{
-			name:           "failed to create VM",
-			respCodeSKU:    200,
-			respCodeRG:     200,
-			respCodePubIP:  200,
-			respCodeSG:     200,
-			respCodeVNet:   200,
-			respCodeSubNet: 200,
-			respCodeNIC:    200,
-			respCodeVM:     404,
-			osArch:         params.Amd64,
-			expected:       params.ProviderInstance{},
-			errString:      "failed to create VM",
+			name:                "failed to create VM",
+			respCodeSKU:         200,
+			respCodeRG:          200,
+			respCodePubIP:       200,
+			respCodeSG:          200,
+			respCodeVNet:        200,
+			respCodeSubNet:      200,
+			respCodeNIC:         200,
+			respCodeVM:          404,
+			osArch:              params.Amd64,
+			expected:            params.ProviderInstance{},
+			errString:           "failed to create VM",
+			expectedDeleteCalls: 1,
+		},
+		{
+			name:                "VM failure with cleanup failure",
+			respCodeSKU:         200,
+			respCodeRG:          200,
+			respCodePubIP:       200,
+			respCodeSG:          200,
+			respCodeVNet:        200,
+			respCodeSubNet:      200,
+			respCodeNIC:         200,
+			respCodeVM:          404,
+			osArch:              params.Amd64,
+			expected:            params.ProviderInstance{},
+			errString:           "failed to create VM",
+			cleanupErrString:    "failed to delete resource group",
+			expectedDeleteCalls: 1,
 		},
 	}
+	deleteCalls := 0
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			deleteCalls = 0
 			bootstrapParams.OSArch = tt.osArch
 			myResourceSKUsServer.NewListPager = func(options *armcompute.ResourceSKUsClientListOptions) (resp azfake.PagerResponder[armcompute.ResourceSKUsClientListResponse]) {
 				mockResponse := armcompute.ResourceSKUsClientListResponse{
@@ -325,6 +355,16 @@ func TestCreateInstance(t *testing.T) {
 					},
 				}, nil)
 
+				return resp, errResp
+			}
+			myResouceGroupServer.BeginDelete = func(ctx context.Context, resourceGroupName string, options *armresources.ResourceGroupsClientBeginDeleteOptions) (resp azfake.PollerResponder[armresources.ResourceGroupsClientDeleteResponse], errResp azfake.ErrorResponder) {
+				deleteCalls++
+				deleteStatus := 200
+				if tt.cleanupErrString != "" {
+					deleteStatus = 500
+				}
+
+				resp.SetTerminalResponse(deleteStatus, armresources.ResourceGroupsClientDeleteResponse{}, nil)
 				return resp, errResp
 			}
 			myPublicIPAdressesServer.BeginCreateOrUpdate = func(ctx context.Context, resourceGroupName string, publicIPAddressName string, parameters armnetwork.PublicIPAddress, options *armnetwork.PublicIPAddressesClientBeginCreateOrUpdateOptions) (resp azfake.PollerResponder[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], errResp azfake.ErrorResponder) {
@@ -432,9 +472,13 @@ func TestCreateInstance(t *testing.T) {
 			if tt.errString != "" {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errString)
+				if tt.cleanupErrString != "" {
+					assert.Contains(t, err.Error(), tt.cleanupErrString)
+				}
 			} else {
 				assert.NoError(t, err)
 			}
+			assert.Equal(t, tt.expectedDeleteCalls, deleteCalls)
 			assert.Equal(t, tt.expected, instance)
 		})
 	}

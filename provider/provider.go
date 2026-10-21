@@ -16,6 +16,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/cloudbase/garm-provider-azure/config"
@@ -54,7 +55,7 @@ type azureProvider struct {
 }
 
 // CreateInstance creates a new compute instance in the provider.
-func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams params.BootstrapInstance) (params.ProviderInstance, error) {
+func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams params.BootstrapInstance) (instance params.ProviderInstance, err error) {
 	runnerSpec, err := spec.GetRunnerSpecFromBootstrapParams(bootstrapParams, a.controllerID, a.cfg)
 	if err != nil {
 		return params.ProviderInstance{}, fmt.Errorf("failed to generate spec: %w", err)
@@ -96,8 +97,12 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 	}
 
 	defer func() {
-		if err != nil {
-			a.azCli.DeleteResourceGroup(ctx, runnerSpec.BootstrapParams.Name, true) //nolint
+		if err == nil {
+			return
+		}
+
+		if cleanupErr := a.azCli.DeleteResourceGroup(ctx, runnerSpec.BootstrapParams.Name, true); cleanupErr != nil {
+			err = errors.Join(err, fmt.Errorf("failed to clean up resource group: %w", cleanupErr))
 		}
 	}()
 
@@ -136,7 +141,7 @@ func (a *azureProvider) CreateInstance(ctx context.Context, bootstrapParams para
 	// We're lying here. It takes longer for the client to finish polling than for the VM to
 	// start running the userdata. Just return that the instance is running once the request
 	// to create it goes through.
-	instance := params.ProviderInstance{
+	instance = params.ProviderInstance{
 		ProviderID: runnerSpec.BootstrapParams.Name,
 		Name:       runnerSpec.BootstrapParams.Name,
 		OSType:     runnerSpec.BootstrapParams.OSType,
