@@ -407,8 +407,28 @@ func TestCreateNetWorkInterface(t *testing.T) {
 func TestCreatePublicIP(t *testing.T) {
 	ctx := context.Background()
 	baseName := "test"
+	location := "eastus"
+	requestReceived := false
 	myPublicIPAdressesServer := armnetworkfake.PublicIPAddressesServer{}
-	myPublicIPAdressesServer.BeginCreateOrUpdate = func(ctx context.Context, resourceGroupName string, publicIPAddressName string, parameters armnetwork.PublicIPAddress, options *armnetwork.PublicIPAddressesClientBeginCreateOrUpdateOptions) (resp azfake.PollerResponder[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], errResp azfake.ErrorResponder) {
+	myPublicIPAdressesServer.BeginCreateOrUpdate = func(ctx context.Context, resourceGroupName string, publicIPAddressName string, parameters armnetwork.PublicIPAddress, options *armnetwork.PublicIPAddressesClientBeginCreateOrUpdateOptions) (azfake.PollerResponder[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse], azfake.ErrorResponder) {
+		var resp azfake.PollerResponder[armnetwork.PublicIPAddressesClientCreateOrUpdateResponse]
+		var errResp azfake.ErrorResponder
+
+		requestReceived = true
+		assert.Equal(t, baseName, resourceGroupName)
+		assert.Equal(t, baseName, publicIPAddressName)
+		assert.Equal(t, armnetwork.PublicIPAddress{
+			Location: to.Ptr(location),
+			SKU: &armnetwork.PublicIPAddressSKU{
+				Name: to.Ptr(armnetwork.PublicIPAddressSKUNameStandard),
+				Tier: to.Ptr(armnetwork.PublicIPAddressSKUTierRegional),
+			},
+			Properties: &armnetwork.PublicIPAddressPropertiesFormat{
+				PublicIPAllocationMethod: to.Ptr(armnetwork.IPAllocationMethodStatic),
+				PublicIPAddressVersion:   to.Ptr(armnetwork.IPVersionIPv4),
+			},
+		}, parameters)
+
 		resp.SetTerminalResponse(200, armnetwork.PublicIPAddressesClientCreateOrUpdateResponse{
 			PublicIPAddress: armnetwork.PublicIPAddress{
 				Location: to.Ptr("eastus"),
@@ -417,8 +437,10 @@ func TestCreatePublicIP(t *testing.T) {
 				},
 			},
 		}, nil)
+
 		return resp, errResp
 	}
+
 	client, err := armnetwork.NewPublicIPAddressesClient("fake-id", &azfake.TokenCredential{}, &policy.ClientOptions{
 		ClientOptions: azcore.ClientOptions{
 			Transport: armnetworkfake.NewPublicIPAddressesServerTransport(&myPublicIPAdressesServer),
@@ -445,10 +467,12 @@ func TestCreatePublicIP(t *testing.T) {
 			VnetSubnetID:             "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Network/providers/Microsoft.Network/virtualNetworks/vnet-Default/subnets/snet-default",
 			DisableIsolatedNetworks:  true,
 		},
+		location: location,
 		pubIPCli: client,
 	}
 
 	resp, err := a.CreatePublicIP(ctx, baseName)
+	assert.True(t, requestReceived)
 	assert.NoError(t, err)
 	assert.Equal(t, "eastus", *resp.Location)
 	assert.Equal(t, armnetwork.IPAllocationMethodStatic, *resp.Properties.PublicIPAllocationMethod)

@@ -25,6 +25,8 @@ The config file for this external provider is a simple toml used to configure th
 
 For now, service principals, azure managed identities and workload identities are supported. An example can be found [in the testdata folder](./testdata/config.toml).
 
+When public IP allocation is enabled, the provider creates a static IPv4 address with the Standard SKU and Regional tier. Azure retired Basic SKU public IP addresses on September 30, 2025. Public IPv4 addresses incur a separate charge; see [Azure public IP addresses](https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/public-ip-addresses/).
+
 ```toml
 location = "westeurope"
 use_ephemeral_storage = true
