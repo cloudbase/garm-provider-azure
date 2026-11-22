@@ -280,8 +280,13 @@ func (a *AzureCli) CreateNetWorkInterface(ctx context.Context, baseName, subnetI
 func (a *AzureCli) CreatePublicIP(ctx context.Context, baseName string) (*armnetwork.PublicIPAddress, error) {
 	parameters := armnetwork.PublicIPAddress{
 		Location: to.Ptr(a.location),
+		SKU: &armnetwork.PublicIPAddressSKU{
+			Name: to.Ptr(armnetwork.PublicIPAddressSKUNameStandard),
+			Tier: to.Ptr(armnetwork.PublicIPAddressSKUTierRegional),
+		},
 		Properties: &armnetwork.PublicIPAddressPropertiesFormat{
 			PublicIPAllocationMethod: to.Ptr(armnetwork.IPAllocationMethodStatic),
+			PublicIPAddressVersion:   to.Ptr(armnetwork.IPVersionIPv4),
 		},
 	}
 
@@ -294,6 +299,7 @@ func (a *AzureCli) CreatePublicIP(ctx context.Context, baseName string) (*armnet
 	if err != nil {
 		return nil, err
 	}
+
 	return &resp.PublicIPAddress, err
 }
 
